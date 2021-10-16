@@ -7,9 +7,10 @@ Project Idea:
 
 Implementation Details:
 1.	Use Keras CNN for emotion recognition model.
-Visualizing your model
+
+Visualizing your model:
 1.	https://machinelearningmastery.com/visualize-deep-learning-neural-network-model-keras/ 
 2.	https://keras.io/api/utils/model_plotting_utils/ 
 
-Similar work for generating
+Similar work for generating images:
 1.	J. Xu, J. Broekens, K. Hindriks, and M. A. Neerincx, “Robot mood is contagious: effects of robot body language in the imitation game,” in Proceedings of the 2014 international conference on Autonomous agents and multi-agent systems. International Foundation for Autonomous Agents and Multiagent Systems, 2014, pp. 973–980.
