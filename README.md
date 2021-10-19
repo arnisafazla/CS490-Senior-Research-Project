@@ -6,7 +6,7 @@ Project Idea:
 3.	If dataset is not large enough: Use openCV emotion recognition from facial expressions to detect the images with different types of emotions. Download those images and label them by the emotions detected: https://pypi.org/project/simple-image-download/. Process the images. Train GAN again. Pose is more effective in emotion estimation than facial expression: https://www.encephale.com/content/download/91193/1652030/version/1/file/aviezer_how_discriminate_intense_positive_negative_emotions_Science_2012.pdf
 
 Implementation Details:
-1.	Use Keras CNN for emotion recognition model.
+1.	Use Keras CNN/LSTM for emotion recognition model.
 
 Visualizing your model:
 1.	https://machinelearningmastery.com/visualize-deep-learning-neural-network-model-keras/ 
