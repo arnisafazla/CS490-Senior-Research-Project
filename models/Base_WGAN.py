@@ -28,11 +28,12 @@ class Base_WGAN(keras.Model):
         super(Base_WGAN, self).__init__()
         self.dataset = dataset
         if model_load == None:
+          self.config = config
           self.critic = critic
           self.generator = generator
-          self.name = name + datetime.datetime.now().strftime("%Y.%m.%d-%H:%M:%S")
-          self.model_dir = os.path.join(dest_dir, self.name)
-          self.metrics = [list() for i in range(2)]   # c_loss, g_loss
+          self.model_name = name + datetime.datetime.now().strftime("%Y.%m.%d-%H:%M:%S")
+          self.model_dir = os.path.join(dest_dir, self.model_name)
+          self.train_metrics = [list() for i in range(2)]   # c_loss, g_loss
           self.start_epoch = 0
         else:
           if os.path.basename(model_load)[:5] != epoch:
@@ -40,8 +41,8 @@ class Base_WGAN(keras.Model):
           self.critic = load_model(os.path.join(model_load, 'critic.h5'))
           self.generator = load_model(os.path.join(model_load, 'generator.h5'))
           self.model_dir = model_load[0:-len(os.path.basename(model_load))]
-          with open(os.path.join(model_load, 'metrics.txt')) as file:
-            self.metrics = json.load(file)
+          with open(os.path.join(model_load, 'train_metrics.txt')) as file:
+            self.train_metrics = json.load(file)
           with open(os.path.join(self.model_dir, 'config.json')) as file:
             self.config = json.load(file)
           self.start_epoch = int(re.match('.*?([0-9]+)$', model_load).group(1))
@@ -144,12 +145,12 @@ class Base_WGAN(keras.Model):
                             self.g_optimizer.apply_gradients(
                                 zip(gen_gradient, self.generator.trainable_variables)
                             )
-                            self.metrics[0].append(c_loss_batch / n_critic)
-                            self.metrics[1].append(g_loss_batch)
+                            self.train_metrics[0].append(c_loss_batch / n_critic)
+                            self.train_metrics[1].append(g_loss_batch)
                             c_loss_epoch.append(c_loss_batch / n_critic)
                             g_loss_epoch.append(g_loss_batch)
                             if verbose == 1 or verbose == 2:
-                                print('>%d, %d/%d, d_loss_fake=%.3f, d_loss_real=%.3f, d_loss_wrong=%.3f, g=%.3f' %(epoch+1, batch+1, bat_per_epo, c_loss_batch / n_critic, g_loss_batch)
+                                print('>%d, %d/%d, d_loss_fake=%.3f, d_loss_real=%.3f, d_loss_wrong=%.3f, g=%.3f' %(epoch+1, batch+1, bat_per_epo, c_loss_batch / n_critic, g_loss_batch))
                         logs = [mean(c_loss_epoch), mean(g_loss_epoch)]
                         names = ["c_loss", "g_loss"]
                         tensorboard.on_epoch_end(epoch+1, Tools.named_logs(names, logs))
@@ -157,23 +158,21 @@ class Base_WGAN(keras.Model):
                         os.mkdir(epoch_dir)
                         self.generator.save(os.path.join(epoch_dir, 'generator.h5'))
                         self.critic.save(os.path.join(epoch_dir, 'critic.h5'))
-                        with open(os.path.join(epoch_dir, 'metrics.txt'), 'w') as file:
-                            json.dump(self.metrics, file)
+                        with open(os.path.join(epoch_dir, 'train_metrics.txt'), 'w') as file:
+                            json.dump(self.train_metrics, file)
                         if verbose == 2:
                             self.save_checkpoint(self.dataset, epoch_dir, n_samples=1)
-                            cm = metrics.confusion_matrix(self.critic, self.config['n_classes'], self.dataset)
+                            cm = Metrics.confusion_matrix(self.critic, self.config['n_classes'], self.dataset)
                             with open(os.path.join(epoch_dir, 'cm.txt'), 'w') as file:
                                 json.dump(cm, file)
     # create a line plot of loss for the gan and save to file
     @staticmethod
-    def plot_history(metrics):
+    def plot_history(train_metrics):
       # plot loss
-      loss_fake, loss_real, loss_wrong, g_loss = metrics
+      c_loss, g_loss = train_metrics
       plt.subplot(2, 1, 1)
-      plt.plot(loss_real, label='d_loss_real')
-      plt.plot(loss_fake, label='d_loss_fake')
-      # plt.plot(loss_wrong, label='d_loss_wrong')
-      plt.plot(g_loss, label='generator_loss')
+      plt.plot(c_loss, label='c_loss')
+      plt.plot(g_loss, label='g_loss')
       plt.legend()
       return plt.figure
 
