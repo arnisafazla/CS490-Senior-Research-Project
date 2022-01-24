@@ -1,4 +1,6 @@
 import logging
+import numpy as np
+import tensorflow as tf
 
 class Tools(object):
   @staticmethod
@@ -12,7 +14,7 @@ class Tools(object):
     return [tf.convert_to_tensor(labels), tf.convert_to_tensor(z_input)]
 
   @staticmethod
-  def named_logs(model, names, logs):
+  def named_logs(names, logs):
     result = {}
     for l in zip(names, logs):
       result[l[0]] = l[1]

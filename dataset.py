@@ -3,10 +3,12 @@ import os, sys
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from sklearn.preprocessing import OneHotEncoder
-from sklearn.preprocessing import OrdinalEncoder
 from tqdm import tqdm
 import random
+
+from sklearn.preprocessing import OneHotEncoder
+from sklearn.preprocessing import OrdinalEncoder
+import tensorflow as tf
 
 main_dir = os.getcwd()
 sys.path.append(os.path.join(main_dir, 'PyMO'))
@@ -127,7 +129,7 @@ class Dataset(object):
     dataset.Y_ord = np.concatenate([row[:min] for row in dataset.Y_ord_samples],axis=0)
     dataset.Y_vec = np.concatenate([row[:min] for row in dataset.Y_vec_samples],axis=0)
     
-
+  # For the simple LSTM model called Classifier
   def train_test_split(self, test_size = 0.33, ord = False):
     size = self.X.shape[0]
     index = [*range(size)]
@@ -169,3 +171,84 @@ class Dataset(object):
     parametrizer = preprocessing.MocapParameterizer(param_type='position')
     position_transformed = parametrizer.transform(mocap)
     return position_transformed
+
+  @staticmethod
+  def stickfigure(mocap_track, title='', step=1, rows=2, data=None, joints=None, draw_names=False, ax=None, figsize=(8,8)):
+    n = mocap_track.values.shape[0] // step
+    fig, axs = plt.subplots(ncols=rows, nrows=n // rows , figsize=figsize, constrained_layout=True)
+    for row in range(n // rows):
+      for col in range(rows):    
+        if joints is None:
+            joints_to_draw = mocap_track.skeleton.keys()
+        else:
+            joints_to_draw = joints    
+        if data is None:
+            df = mocap_track.values
+        else:
+            df = data  
+        frame = (row * rows + col) * step
+        for joint in joints_to_draw:
+            axs[row, col].scatter(x=df['%s_Xposition'%joint][frame], 
+                        y=df['%s_Yposition'%joint][frame],  
+                        alpha=0.6, c='b', marker='o')
+            parent_x = df['%s_Xposition'%joint][frame]
+            parent_y = df['%s_Yposition'%joint][frame]        
+            children_to_draw = [c for c in mocap_track.skeleton[joint]['children'] if c in joints_to_draw]        
+            for c in children_to_draw:
+                child_x = df['%s_Xposition'%c][frame]
+                child_y = df['%s_Yposition'%c][frame]
+                axs[row, col].plot([parent_x, child_x], [parent_y, child_y], 'k-', lw=2)            
+            if draw_names:
+                axs[row, col].annotate(joint, 
+                        (df['%s_Xposition'%joint][frame] + 0.1, 
+                          df['%s_Yposition'%joint][frame] + 0.1))
+            axs[row, col].axis('off')
+    fig.suptitle(title)
+    return fig
+
+  # Giving an error
+  @staticmethod
+  def stickfigure3d(mocap_track, step=1, rows=2, data=None, joints=None, draw_names=False, ax=None, figsize=(8,8)):
+    from mpl_toolkits.mplot3d import Axes3D
+    n = 100 // step
+    fig, axs = plt.subplots(ncols=rows, nrows=n // rows , figsize=figsize, constrained_layout=True)
+    for row in range(n // rows):
+      for col in range(rows):    
+        if joints is None:
+            joints_to_draw = mocap_track.skeleton.keys()
+        else:
+            joints_to_draw = joints  
+        if data is None:
+            df = mocap_track.values
+        else:
+            df = data     
+        frame = (row * rows + col) * step
+        for joint in joints_to_draw:
+            parent_x = df['%s_Xposition'%joint][frame]
+            parent_y = df['%s_Zposition'%joint][frame]
+            parent_z = df['%s_Yposition'%joint][frame]
+            # ^ In mocaps, Y is the up-right axis
+            print(parent_x, parent_y, parent_z)
+            axs[row, col].scatter(xs=parent_x, 
+                        ys=parent_y,  
+                        zs=parent_z,  
+                        alpha=0.6, c='b', marker='o')        
+            children_to_draw = [c for c in mocap_track.skeleton[joint]['children'] if c in joints_to_draw]    
+            for c in children_to_draw:
+                child_x = df['%s_Xposition'%c][frame]
+                child_y = df['%s_Zposition'%c][frame]
+                child_z = df['%s_Yposition'%c][frame]
+                # ^ In mocaps, Y is the up-right axis
+
+                axs[row, col].plot([parent_x, child_x], [parent_y, child_y], [parent_z, child_z], 'k-', lw=2, c='black')       
+            if draw_names:
+                axs[row, col].text(x=parent_x + 0.1, 
+                        y=parent_y + 0.1,
+                        z=parent_z + 0.1,
+                        s=joint,
+                        color='rgba(0,0,0,0.9)')
+            axs[row, col].axis('off')
+    return ax
+
+    def get_size(self):
+        return self.X.shape[0]
