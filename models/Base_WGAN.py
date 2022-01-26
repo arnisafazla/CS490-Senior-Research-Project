@@ -1,5 +1,6 @@
 import os, sys, logging, json
 import matplotlib.pyplot as plt
+import numpy as np
 import tensorflow as tf
 from tensorflow import keras
 from tensorflow.keras import backend as K
@@ -27,6 +28,11 @@ class Base_WGAN(keras.Model):
     ):
         super(Base_WGAN, self).__init__()
         self.dataset = dataset
+        self.logger = logging.getLogger()
+        self.logger.setLevel(logging.DEBUG)
+        logging.basicConfig(filename="/content/test.log",
+                    format='%(asctime)s %(message)s',
+                    filemode='w')
         if model_load == None:
           self.config = config
           self.critic = critic
@@ -62,6 +68,7 @@ class Base_WGAN(keras.Model):
         # Get the interpolated image
         alpha = tf.random.normal([batch_size, self.config['in_shape'][0], self.config['in_shape'][1],], 0.0, 1.0)
         diff = fake_seq - real_seq
+        # self.logger.info('fake_seq: {}, real_seq: {}, diff: {}, alpha: {}'.format(fake_seq.shape, real_seq.shape, diff.shape, alpha.shape))
         interpolated = real_seq + alpha * diff
 
         with tf.GradientTape() as gp_tape:
@@ -70,15 +77,16 @@ class Base_WGAN(keras.Model):
             pred = self.critic([real_labels, interpolated], training=True)
 
         # 2. Calculate the gradients w.r.t to this interpolated image.
-        grads = gp_tape.gradient(pred, [real_labels, interpolated])[0]
+        grads = gp_tape.gradient(pred, [interpolated])[0]
         # 3. Calculate the norm of the gradients.
         norm = tf.sqrt(tf.reduce_sum(tf.square(grads), axis=[1, 2]))
         gp = tf.reduce_mean((norm - 1.0) ** 2)
         return gp
 
     # logdir is the general destination path for the tensorflow board logs.
-    def train(self, logdir, verbose=2):
+    def train(self, logdir=None, verbose=2):  #   for now no tensorboard
         if not os.path.exists(self.model_dir):
+            self.logger.info('Creating new model directory.')
             os.mkdir(self.model_dir)
             with open(os.path.join(self.model_dir, 'config.json'), 'w') as file:
                 json.dump(self.config, file)
@@ -87,25 +95,20 @@ class Base_WGAN(keras.Model):
             device_name = tf.test.gpu_device_name()
             if device_name == '/device:GPU:0':
                 with tf.device('/device:GPU:0'):
-                    tensorboard = tf.keras.callbacks.TensorBoard(os.path.join(logdir, self.name), histogram_freq=1)
-                    tensorboard.set_model(self.critic)
-                    tensorboard.set_model(self.generator)
+                    # tensorboard = tf.keras.callbacks.TensorBoard(os.path.join(logdir, self.name), histogram_freq=1)
+                    # tensorboard.set_model(self.critic)
+                    # tensorboard.set_model(self.generator)
                     # TRAINING
                     dataset_size = self.dataset.get_size()
-                    bat_per_epo = int(dataset_size / self.config['n_batch'])
-                    half_batch = int(n_batch / 2)
-                    if self.config['wrong_labels']:
-                        other_batch = int(half_batch / 2)
-                    else:
-                        other_batch = half_batch
+                    bat_per_epo = int(dataset_size / self.config['batch_size'])
                     for epoch in range(self.start_epoch, self.config['epochs']):
-                        c_loss_epoch, g_loss_epoch = list(), list()
+                        # c_loss_epoch, g_loss_epoch = list(), list()
                         for batch in range(bat_per_epo):
                             c_loss_batch = 0
-                            [labels_real, X_real], y_real = self.dataset.generate_real_samples(bat_per_epo)
+                            [labels_real, X_real], y_real = self.dataset.generate_real_samples(self.config['batch_size'])
                             for _ in range(self.config['n_critic']):
                                 # Get the latent vector
-                                labels_input, z_input = Tools.generate_latent_points(self.config['latent_dim'], bat_per_epo, self.config['n_classes'])
+                                labels_input, z_input = Tools.generate_latent_points(self.config['latent_dim'], self.config['batch_size'], self.config['n_classes'])
                                 with tf.GradientTape() as tape:
                                     # Generate fake images from the latent vector
                                     fake_samples = self.generator([labels_input, z_input], training=True)
@@ -117,11 +120,12 @@ class Base_WGAN(keras.Model):
                                     # Calculate the discriminator loss using the fake and real image logits
                                     c_cost = self.c_loss_fn(real=real_logits, fake=fake_logits)
                                     # Calculate the gradient penalty
-                                    gp = self.gradient_penalty(bat_per_epo, X_real, labels_real, fake_samples)
+                                    gp = self.gradient_penalty(self.config['batch_size'], real_seq=X_real, real_labels=labels_real, fake_seq=fake_samples)
                                     # Add the gradient penalty to the original discriminator loss
-                                    c_loss_batch += c_cost + gp * self.config['gp_weight']
+                                    c_loss = c_cost + gp * self.config['gp_weight']
+                                    c_loss_batch += c_loss
 
-                                # Get the gradients w.r.t the discriminator loss
+                                # Get the gradients w.r.t the critic loss
                                 c_gradient = tape.gradient(c_loss, self.critic.trainable_variables)
                                 # Update the weights of the discriminator using the discriminator optimizer
                                 self.c_optimizer.apply_gradients(
@@ -130,7 +134,7 @@ class Base_WGAN(keras.Model):
 
                             # Train the generator
                             # Get the latent vector
-                            labels_input, z_input = Tools.generate_latent_points(self.config['latent_dim'], bat_per_epo, self.config['n_classes'])
+                            labels_input, z_input = Tools.generate_latent_points(self.config['latent_dim'], self.config['batch_size'], self.config['n_classes'])
                             with tf.GradientTape() as tape:
                                 # Generate fake images using the generator
                                 fake_samples = self.generator([labels_input, z_input], training=True)
@@ -140,20 +144,20 @@ class Base_WGAN(keras.Model):
                                 g_loss_batch = self.g_loss_fn(fake_logits)
 
                             # Get the gradients w.r.t the generator loss
-                            gen_gradient = tape.gradient(g_loss, self.generator.trainable_variables)
+                            gen_gradient = tape.gradient(g_loss_batch, self.generator.trainable_variables)
                             # Update the weights of the generator using the generator optimizer
                             self.g_optimizer.apply_gradients(
                                 zip(gen_gradient, self.generator.trainable_variables)
                             )
-                            self.train_metrics[0].append(c_loss_batch / n_critic)
-                            self.train_metrics[1].append(g_loss_batch)
-                            c_loss_epoch.append(c_loss_batch / n_critic)
-                            g_loss_epoch.append(g_loss_batch)
+                            self.train_metrics[0].append(np.array(c_loss_batch / self.config['n_critic']).tolist())
+                            self.train_metrics[1].append(np.array(g_loss_batch).tolist())
+                            # c_loss_epoch.append(c_loss_batch / self.config['n_critic'])
+                            # g_loss_epoch.append(g_loss_batch)
                             if verbose == 1 or verbose == 2:
-                                print('>%d, %d/%d, d_loss_fake=%.3f, d_loss_real=%.3f, d_loss_wrong=%.3f, g=%.3f' %(epoch+1, batch+1, bat_per_epo, c_loss_batch / n_critic, g_loss_batch))
-                        logs = [mean(c_loss_epoch), mean(g_loss_epoch)]
-                        names = ["c_loss", "g_loss"]
-                        tensorboard.on_epoch_end(epoch+1, Tools.named_logs(names, logs))
+                                print('>%d, %d/%d, c_loss=%.3f, g_loss=%.3f' %(epoch+1, batch+1, bat_per_epo, c_loss_batch / self.config['n_critic'], g_loss_batch))
+                        # logs = [mean(c_loss_epoch), mean(g_loss_epoch)]
+                        # names = ["c_loss", "g_loss"]
+                        # tensorboard.on_epoch_end(epoch+1, Tools.named_logs(names, logs))
                         epoch_dir = os.path.join(self.model_dir, 'epoch_' + str(epoch+1))
                         os.mkdir(epoch_dir)
                         self.generator.save(os.path.join(epoch_dir, 'generator.h5'))
@@ -161,10 +165,14 @@ class Base_WGAN(keras.Model):
                         with open(os.path.join(epoch_dir, 'train_metrics.txt'), 'w') as file:
                             json.dump(self.train_metrics, file)
                         if verbose == 2:
-                            self.save_checkpoint(self.dataset, epoch_dir, n_samples=1)
-                            cm = Metrics.confusion_matrix(self.critic, self.config['n_classes'], self.dataset)
+                            self.save_checkpoint(epoch_dir, n_samples=1)
+                            cm = Metrics.confusion_matrix(critic=self.critic, n_classes=self.config['n_classes'], n_samples=100, dataset=self.dataset)
                             with open(os.path.join(epoch_dir, 'cm.txt'), 'w') as file:
                                 json.dump(cm, file)
+
+            else:
+              with tf.device('/cpu:0'):
+                self.logger.error('Not connected to GPU')
     # create a line plot of loss for the gan and save to file
     @staticmethod
     def plot_history(train_metrics):

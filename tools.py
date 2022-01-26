@@ -30,8 +30,12 @@ class Metrics(object):
         [labels_real, X_real], y_real = dataset.generate_real_samples(1)
         with tf.device('/device:GPU:0'):
           probs = critic.predict([np.arange(n_classes), np.repeat(X_real, n_classes, axis=0)])
-          cm[np.argmax(probs), int(labels_real.item())] += 1
-          return 
+          cm[np.argmax(probs), int(labels_real.numpy().item())] += 1
+      return cm.tolist()
+    else:
+      with tf.device('/cpu:0'):
+        logging.error('Not connected to GPU')
+
 
 
 

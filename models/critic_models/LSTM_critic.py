@@ -14,12 +14,12 @@ def define_critic(config):
     in_seq = layers.Input(shape=config['in_shape'], name='sequence_input')
     merge = layers.Concatenate(name='concatenate', axis=2)([li, in_seq])
 
-    hidden1 = layers.LSTM(config['in_shape'][1], name='lstm1', return_sequences=True, kernel_initializer=init)(merge)
+    hidden1 = layers.LSTM(config['in_shape'][1], name='lstm1', return_sequences=True, kernel_initializer=init, unroll=True)(merge)
     if config['critic_batch_norm']:
       hidden1 = layers.BatchNormalization()(hidden1)
     if config['critic_dropout'] > 0:
       hidden1 = layers.Dropout(config['critic_dropout'])(hidden1)
-    hidden2 = layers.LSTM(hidden1.shape[2], name='lstm2', kernel_initializer=init)(hidden1)   
+    hidden2 = layers.LSTM(hidden1.shape[2], name='lstm2', kernel_initializer=init, unroll=True)(hidden1)   
     if config['critic_batch_norm']:
       hidden2 = layers.BatchNormalization()(hidden2)
     if config['critic_dropout'] > 0:

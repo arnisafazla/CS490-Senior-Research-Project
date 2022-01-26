@@ -129,6 +129,9 @@ class Dataset(object):
     dataset.Y_ord = np.concatenate([row[:min] for row in dataset.Y_ord_samples],axis=0)
     dataset.Y_vec = np.concatenate([row[:min] for row in dataset.Y_vec_samples],axis=0)
     
+  def get_size(self):
+      return self.X.shape[0]
+
   # For the simple LSTM model called Classifier
   def train_test_split(self, test_size = 0.33, ord = False):
     size = self.X.shape[0]
@@ -148,8 +151,9 @@ class Dataset(object):
     r = np.random.randint(0, seq.shape[0], n_samples)
     X, labels = seq[r]/180, labels[r] 
     y = -np.ones((n_samples, 1))
-    return [labels, X], y
+    return [tf.convert_to_tensor(labels), tf.convert_to_tensor(X, dtype=tf.dtypes.float32)], tf.convert_to_tensor(y)
 
+  # not necessary anymore?
   def generate_fake_samples(self, n_samples):
     seq, labels = self.X, self.Y_ord
     r = np.random.randint(0, seq.shape[0], n_samples)
@@ -249,6 +253,3 @@ class Dataset(object):
                         color='rgba(0,0,0,0.9)')
             axs[row, col].axis('off')
     return ax
-
-    def get_size(self):
-        return self.X.shape[0]
