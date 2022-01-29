@@ -24,6 +24,10 @@ def define_projection_critic(config):
       hidden1 = layers.BatchNormalization()(hidden1)
     if config['critic_instance_norm']:
       hidden1 = tfa.layers.InstanceNormalization()(hidden1)
+    if config['critic_layer_norm']:
+      hidden1 = layers.LayerNormalization(axis=1 , center=True , scale=True)(hidden1)
+    if config['critic_weight_norm']:
+      hidden1 = layers.WeightNormalization(axis=1 , center=True , scale=True)(hidden1)
     if config['critic_dropout'] > 0:
       hidden1 = layers.Dropout(config['critic_dropout'])(hidden1)
     hidden2 = layers.LSTM(hidden1.shape[2], name='lstm2', kernel_initializer=init, unroll=True)(hidden1)   
@@ -31,6 +35,10 @@ def define_projection_critic(config):
       hidden2 = layers.BatchNormalization()(hidden2)
     if config['critic_instance_norm']:
       hidden2 = tfa.layers.InstanceNormalization()(hidden2)
+    if config['critic_layer_norm']:
+      hidden2 = layers.LayerNormalization(axis=1 , center=True , scale=True)(hidden2)
+    if config['critic_weight_norm']:
+      hidden2 = layers.WeightNormalization(axis=1 , center=True , scale=True)(hidden2)
     if config['critic_dropout'] > 0:
       hidden2 = layers.Dropout(config['critic_dropout'])(hidden2)
 
