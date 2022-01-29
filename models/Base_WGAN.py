@@ -1,4 +1,4 @@
-import os, sys, logging, json
+import os, sys, logging, json, re
 import matplotlib.pyplot as plt
 import numpy as np
 import tensorflow as tf
@@ -18,13 +18,13 @@ from tools import Tools, Metrics
 class Base_WGAN(keras.Model):
     def __init__(
         self,
-        dest_dir,
-        name,
-        model_load,     # None or path to a specific epoch
-        critic,
-        generator,
         config,
-        dataset
+        dataset,
+        dest_dir = None,
+        name = None,
+        critic = None,
+        generator = None, 
+        model_load = None     # None or path to a specific epoch 
     ):
         super(Base_WGAN, self).__init__()
         self.dataset = dataset
@@ -42,7 +42,7 @@ class Base_WGAN(keras.Model):
           self.train_metrics = [list() for i in range(2)]   # c_loss, g_loss
           self.start_epoch = 0
         else:
-          if os.path.basename(model_load)[:5] != epoch:
+          if os.path.basename(model_load)[:5] != 'epoch':
             logging.error('model_load needs to be a path to an epoch folder, as in epoch_4.')
           self.critic = load_model(os.path.join(model_load, 'critic.h5'))
           self.generator = load_model(os.path.join(model_load, 'generator.h5'))

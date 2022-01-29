@@ -1,4 +1,12 @@
+import os, sys
+main_dir = os.getcwd()
+sys.path.append(os.path.join(main_dir, 'models'))
+os.chdir(main_dir)
+# append a path to any directory that the tensorflow_addons is installed in.
+sys.path.append('/content/drive/MyDrive/CS490')
+
 import tensorflow as tf
+import tensorflow_addons as tfa
 from tensorflow import keras
 from tensorflow.keras import layers
 from tensorflow.keras import utils
@@ -14,11 +22,15 @@ def define_projection_critic(config):
     hidden1 = layers.LSTM(config['in_shape'][1], name='lstm1', return_sequences=True, kernel_initializer=init, unroll=True)(in_seq)
     if config['critic_batch_norm']:
       hidden1 = layers.BatchNormalization()(hidden1)
+    if config['critic_instance_norm']:
+      hidden1 = tfa.layers.InstanceNormalization()(hidden1)
     if config['critic_dropout'] > 0:
       hidden1 = layers.Dropout(config['critic_dropout'])(hidden1)
     hidden2 = layers.LSTM(hidden1.shape[2], name='lstm2', kernel_initializer=init, unroll=True)(hidden1)   
     if config['critic_batch_norm']:
       hidden2 = layers.BatchNormalization()(hidden2)
+    if config['critic_instance_norm']:
+      hidden2 = tfa.layers.InstanceNormalization()(hidden2)
     if config['critic_dropout'] > 0:
       hidden2 = layers.Dropout(config['critic_dropout'])(hidden2)
 
