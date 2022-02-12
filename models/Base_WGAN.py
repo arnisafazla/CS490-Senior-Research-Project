@@ -11,9 +11,9 @@ from tensorflow.keras.models import load_model
 from keras.utils.vis_utils import plot_model
 
 main_dir = os.getcwd()
-sys.path.append(os.path.join(main_dir, 'models'))
-os.chdir(main_dir)
+sys.path.append(main_dir)
 from tools import Tools, Metrics
+from models.generator_models.norm_generator import ConditionalBatchNorm
 
 class Base_WGAN(keras.Model):
     def __init__(
@@ -45,7 +45,7 @@ class Base_WGAN(keras.Model):
           if os.path.basename(model_load)[:5] != 'epoch':
             logging.error('model_load needs to be a path to an epoch folder, as in epoch_4.')
           self.critic = load_model(os.path.join(model_load, 'critic.h5'))
-          self.generator = load_model(os.path.join(model_load, 'generator.h5'))
+          self.generator = load_model(os.path.join(model_load, 'generator.h5'), custom_objects={'ConditionalBatchNorm':ConditionalBatchNorm})
           self.model_dir = model_load[0:-len(os.path.basename(model_load))]
           with open(os.path.join(model_load, 'train_metrics.txt')) as file:
             self.train_metrics = json.load(file)
