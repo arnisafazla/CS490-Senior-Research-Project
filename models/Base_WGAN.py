@@ -210,6 +210,6 @@ class Base_WGAN(keras.Model):
       for i in range(outputs.shape[0]):
         position_transformed.append(self.dataset.transform(np.array([outputs[i]]))[0])
       for i, mocap_track in enumerate(position_transformed):
-        fig = self.dataset.stickfigure(mocap_track, step=20, rows=5, title=self.dataset.ordinalencoder.inverse_transform([[labels[i]]]), figsize=(8,8))
+        fig = self.dataset.stickfigure(mocap_track, step=20, cols=5, title=self.dataset.ordinalencoder.inverse_transform([[labels[i]]]), figsize=(8,8))
         fig.savefig(os.path.join(epoch_dir, str(i) + '.png'))
         plt.close()

@@ -5,6 +5,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 import random
+import copy
 
 from sklearn.preprocessing import OneHotEncoder
 from sklearn.preprocessing import OrdinalEncoder
@@ -77,6 +78,8 @@ class Dataset(object):
     self.Y_vec = np.array(self.Y_vec)
     self.Y_ord = np.array(self.Y_ord)
 
+    self.n_features = self.X.shape[2]
+
   @staticmethod
   def classes_dist(dataset):
     size = dataset.X.shape[0]
@@ -132,12 +135,26 @@ class Dataset(object):
   def get_size(self):
       return self.X.shape[0]
 
-  # For the simple LSTM model called Classifier
-  def train_test_split(self, test_size = 0.33, ord = False):
+  @staticmethod
+  def smoothen(rotation_data):
+    sin = np.sin(np.deg2rad(rotation_data))
+    cos = np.cos(np.deg2rad(rotation_data))
+    return np.concatenate((sin, cos), axis=2)
+
+  @staticmethod
+  def atan(rotation_data):
+    sin = rotation_data[:,:,:int(rotation_data.shape[2]/2)]
+    cos = rotation_data[:,:,int(rotation_data.shape[2]/2):]
+    return np.arctan2(sin, cos) * 180 / np.pi
+
+  # For the simple LSTM model called Classifier can check if Classifier is better with smoothened data
+  def train_test_split(self, test_size = 0.33, ord = False, smoothen=False):
     size = self.X.shape[0]
     index = [*range(size)]
     random.shuffle(index)
     X_shuffled = np.array([self.X[i] for i in index])
+    if smoothen:
+      X_shuffled = self.smoothen(X_shuffled)
     if ord:
       Y_shuffled = np.array([self.Y_ord[i] for i in index])
     else:
@@ -146,26 +163,35 @@ class Dataset(object):
     split = size - int(size * test_size)
     return X_shuffled[0:split], Y_shuffled[0:split], X_shuffled[split:], Y_shuffled[split:]
 
-  def generate_real_samples(self, n_samples):
+  def generate_real_samples(self, n_samples, smoothen=True):
     seq, labels = self.X, self.Y_ord
     r = np.random.randint(0, seq.shape[0], n_samples)
-    X, labels = seq[r]/180, labels[r] 
+    labels = labels[r]
+    if smoothen:
+      X = self.smoothen(seq[r])
+    else:
+      X = seq[r]/180
     y = -np.ones((n_samples, 1))
     return [tf.convert_to_tensor(labels), tf.convert_to_tensor(X, dtype=tf.dtypes.float32)], tf.convert_to_tensor(y)
 
   # not necessary anymore?
-  def generate_fake_samples(self, n_samples):
+  def generate_fake_samples(self, n_samples, smoothen=True):
     seq, labels = self.X, self.Y_ord
     r = np.random.randint(0, seq.shape[0], n_samples)
-    X, labels_tmp = seq[r]/180, labels[r].reshape((-1,))
+    labels_tmp = labels[r].reshape((-1,))
+    if smoothen:
+      X = self.smoothen(seq[r])
+    else:
+      X = seq[r]/180
     l = np.random.randint(1, self.emotions.shape[0], n_samples) 
     # randomly change to class labels to another
     labels_tmp = (labels_tmp + l) % self.emotions.shape[0]
     y = np.ones((n_samples, 1))
     return [labels_tmp.reshape((-1,1)), X], y
 
-  def transform(self, rotation_data):
-    rotation_data = rotation_data * 180
+  def transform(self, rotation_data, smoothen=True):
+    if smoothen:
+      rotation_data = self.atan(rotation_data)
     pos_values = np.zeros((rotation_data.shape[1], 3))
     full_values = np.array([np.concatenate((pos_values,sample), axis=1) for sample in rotation_data])
     values = [pd.DataFrame(data=sample, columns=self.feature_names) for sample in full_values]
@@ -177,11 +203,12 @@ class Dataset(object):
     return position_transformed
 
   @staticmethod
-  def stickfigure(mocap_track, title='', step=1, rows=2, data=None, joints=None, draw_names=False, ax=None, figsize=(8,8)):
+  def stickfigure(mocap_track, title='', step=1, cols=2, data=None, joints=None, draw_names=False, ax=None, figsize=(8,8)):
     n = mocap_track.values.shape[0] // step
-    fig, axs = plt.subplots(ncols=rows, nrows=n // rows , figsize=figsize, constrained_layout=True)
-    for row in range(n // rows):
-      for col in range(rows):    
+    
+    fig, axs = plt.subplots(ncols=cols, nrows=n // cols , figsize=figsize, constrained_layout=True)
+    for row in range(n // cols):
+      for col in range(cols):    
         if joints is None:
             joints_to_draw = mocap_track.skeleton.keys()
         else:
