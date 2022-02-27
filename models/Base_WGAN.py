@@ -13,7 +13,7 @@ from keras.utils.vis_utils import plot_model
 main_dir = os.getcwd()
 sys.path.append(main_dir)
 from tools import Tools, Metrics
-from models.generator_models.norm_generator import ConditionalBatchNorm
+from models.generator_models.norm_generator import ConditionalBatchNorm, ConditionalLayerNormPlus, ConditionalLayerNorm
 
 class Base_WGAN(keras.Model):
     def __init__(
@@ -42,15 +42,22 @@ class Base_WGAN(keras.Model):
           self.train_metrics = [list() for i in range(2)]   # c_loss, g_loss
           self.start_epoch = 0
         else:
+          self.model_dir = model_load[0:-len(os.path.basename(model_load))]
+          with open(os.path.join(self.model_dir, 'config.json')) as file:
+            self.config = json.load(file)
           if os.path.basename(model_load)[:5] != 'epoch':
             logging.error('model_load needs to be a path to an epoch folder, as in epoch_4.')
           self.critic = load_model(os.path.join(model_load, 'critic.h5'))
-          self.generator = load_model(os.path.join(model_load, 'generator.h5'), custom_objects={'ConditionalBatchNorm':ConditionalBatchNorm})
+          if self.config['generator_batch_norm']:
+            self.generator = load_model(os.path.join(model_load, 'generator.h5'), custom_objects={'ConditionalBatchNorm':ConditionalBatchNorm})
+          elif self.config['generator_layer_norm']:
+            self.generator = load_model(os.path.join(model_load, 'generator.h5'), custom_objects={'ConditionalLayerNorm':ConditionalLayerNorm})
+          elif self.config['generator_layer_norm_plus']:
+            self.generator = load_model(os.path.join(model_load, 'generator.h5'), custom_objects={'ConditionalLayerNormPlus':ConditionalLayerNormPlus})
           self.model_dir = model_load[0:-len(os.path.basename(model_load))]
           with open(os.path.join(model_load, 'train_metrics.txt')) as file:
             self.train_metrics = json.load(file)
-          with open(os.path.join(self.model_dir, 'config.json')) as file:
-            self.config = json.load(file)
+
           self.start_epoch = int(re.match('.*?([0-9]+)$', model_load).group(1))
     def compile(self, c_optimizer, g_optimizer, c_loss_fn, g_loss_fn):
         super(Base_WGAN, self).compile()

@@ -217,7 +217,7 @@ class Dataset(object):
             df = mocap_track.values
         else:
             df = data  
-        frame = (row * rows + col) * step
+        frame = (row * cols + col) * step
         for joint in joints_to_draw:
             axs[row, col].scatter(x=df['%s_Xposition'%joint][frame], 
                         y=df['%s_Yposition'%joint][frame],  
@@ -239,12 +239,12 @@ class Dataset(object):
 
   # Giving an error
   @staticmethod
-  def stickfigure3d(mocap_track, step=1, rows=2, data=None, joints=None, draw_names=False, ax=None, figsize=(8,8)):
+  def stickfigure3d(mocap_track, step=1, cols=2, data=None, joints=None, draw_names=False, ax=None, figsize=(8,8)):
     from mpl_toolkits.mplot3d import Axes3D
     n = 100 // step
-    fig, axs = plt.subplots(ncols=rows, nrows=n // rows , figsize=figsize, constrained_layout=True)
-    for row in range(n // rows):
-      for col in range(rows):    
+    fig, axs = plt.subplots(ncols=cols, nrows=n // cols , figsize=figsize, constrained_layout=True)
+    for row in range(n // cols):
+      for col in range(cols):    
         if joints is None:
             joints_to_draw = mocap_track.skeleton.keys()
         else:
@@ -253,7 +253,7 @@ class Dataset(object):
             df = mocap_track.values
         else:
             df = data     
-        frame = (row * rows + col) * step
+        frame = (row * cols + col) * step
         for joint in joints_to_draw:
             parent_x = df['%s_Xposition'%joint][frame]
             parent_y = df['%s_Zposition'%joint][frame]

@@ -24,7 +24,7 @@ def define_norm_generator(config):
   elif config['generator_layer_norm']:
     merged = layers.TimeDistributed(ConditionalLayerNorm(n_classes=config['n_classes'], name='conditional_layer_norm'))(merged)
   elif config['generator_layer_norm_plus']:
-    merged = layers.TimeDistributed(ConditionalLayerNormPlus(n_classes=config['n_classes'], name='conditional_layer_norm'))(merged)
+    merged = layers.TimeDistributed(ConditionalLayerNormPlus(n_classes=config['n_classes'], name='conditional_layer_norm_plus'))(merged)
   hidden2 = layers.LSTM(config['in_shape'][1], name='out_LSTM', return_sequences=True, kernel_initializer=init)(merged)
   merged2 = layers.Concatenate(axis=2, name='concatenate2')([hidden2, li])
   if config['generator_batch_norm']:
@@ -32,15 +32,14 @@ def define_norm_generator(config):
   elif config['generator_layer_norm']:
     merged2 = layers.TimeDistributed(ConditionalLayerNorm(n_classes=config['n_classes'], name='conditional_layer_norm2'))(merged2)
   elif config['generator_layer_norm_plus']:
-    merged2 = layers.TimeDistributed(ConditionalLayerNormPlus(n_classes=config['n_classes'], name='conditional_layer_norm2'))(merged2)
+    merged2 = layers.TimeDistributed(ConditionalLayerNormPlus(n_classes=config['n_classes'], name='conditional_layer_norm_plus2'))(merged2)
   model = keras.Model([in_label, in_lat], merged2, name='generator')
   return model
 
 class ConditionalBatchNorm(layers.Layer):
-  def __init__(self, n_classes=6, name=''):
-    super().__init__(name=name)
+  def __init__(self, n_classes, **kwargs):
+    super().__init__(**kwargs)
     self.n_classes = n_classes
-  
   def build(self, input_shape):
     self.seq_len = input_shape[1] - 1
     self.gamma = self.add_weight(shape=[self.n_classes, self.seq_len], 
@@ -76,13 +75,18 @@ class ConditionalBatchNorm(layers.Layer):
     return output
   def compute_output_shape(self, input_shape):
     return (None, self.seq_len)
+  def get_config(self):
+    config = super().get_config()
+    config.update({
+        "n_classes": self.n_classes
+    })
+    return config
 
 # Conditional layer norm but calculate beta and gammas separately using MLPs.
 class ConditionalLayerNormPlus(layers.Layer):
-  def __init__(self, n_classes=6, name=''):
-    super().__init__(name=name)
+  def __init__(self, n_classes, **kwargs):
+    super().__init__(**kwargs)
     self.n_classes = n_classes
-
   def build(self, input_shape):
     self.seq_len = input_shape[1] - self.n_classes
     # self.gamma_embedding = layers.Embedding(1, self.seq_len, name='gamma_embedding')
@@ -110,12 +114,17 @@ class ConditionalLayerNormPlus(layers.Layer):
     return output
   def compute_output_shape(self, input_shape):
     return (None, self.seq_len)
+  def get_config(self):
+    config = super().get_config()
+    config.update({
+        "n_classes": self.n_classes
+    })
+    return config
 
 class ConditionalLayerNorm(layers.Layer):
-  def __init__(self, n_classes=6, name=''):
-    super().__init__(name=name)
+  def __init__(self, n_classes, **kwargs):
+    super().__init__(**kwargs)
     self.n_classes = n_classes
-
   def build(self, input_shape):
     self.seq_len = input_shape[1] - 1
     self.gamma = self.add_weight(shape=[self.n_classes, self.seq_len], 
@@ -135,3 +144,9 @@ class ConditionalLayerNorm(layers.Layer):
     return output
   def compute_output_shape(self, input_shape):
     return (None, self.seq_len)
+  def get_config(self):
+    config = super().get_config()
+    config.update({
+        "n_classes": self.n_classes
+    })
+    return config
