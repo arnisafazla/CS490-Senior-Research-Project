@@ -192,6 +192,8 @@ class Dataset(object):
   def transform(self, rotation_data, smoothen=True):
     if smoothen:
       rotation_data = self.atan(rotation_data)
+    else:
+      rotation_data = rotation_data * 180
     pos_values = np.zeros((rotation_data.shape[1], 3))
     full_values = np.array([np.concatenate((pos_values,sample), axis=1) for sample in rotation_data])
     values = [pd.DataFrame(data=sample, columns=self.feature_names) for sample in full_values]
