@@ -57,7 +57,6 @@ class Base_WGAN(keras.Model):
           self.model_dir = model_load[0:-len(os.path.basename(model_load))]
           with open(os.path.join(model_load, 'train_metrics.txt')) as file:
             self.train_metrics = json.load(file)
-
           self.start_epoch = int(re.match('.*?([0-9]+)$', model_load).group(1))
     def compile(self, c_optimizer, g_optimizer, c_loss_fn, g_loss_fn):
         super(Base_WGAN, self).compile()
@@ -167,13 +166,13 @@ class Base_WGAN(keras.Model):
                     # tensorboard.on_epoch_end(epoch+1, Tools.named_logs(names, logs))
                     epoch_dir = os.path.join(self.model_dir, 'epoch_' + str(epoch+1))
                     os.mkdir(epoch_dir)
-                    self.generator.save(os.path.join(epoch_dir, 'generator.h5'))
-                    self.critic.save(os.path.join(epoch_dir, 'critic.h5'))
+                    self.generator.save(os.path.join(epoch_dir, 'generator.h5'), include_optimizer=True)
+                    self.critic.save(os.path.join(epoch_dir, 'critic.h5'), include_optimizer=True)
                     with open(os.path.join(epoch_dir, 'train_metrics.txt'), 'w') as file:
                         json.dump(self.train_metrics, file)
                     if verbose == 2:
                         self.save_checkpoint(epoch_dir, n_samples=1)
-                        cm = Metrics.confusion_matrix(critic=self.critic, n_classes=self.config['n_classes'], n_samples=10, dataset=self.dataset)
+                        cm = Metrics.confusion_matrix(critic=self.critic, n_classes=self.config['n_classes'], n_samples=10, dataset=self.dataset, smoothen=self.config['smoothen'])
                         with open(os.path.join(epoch_dir, 'cm.txt'), 'w') as file:
                             json.dump(cm, file)
 

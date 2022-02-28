@@ -22,15 +22,15 @@ class Tools(object):
 
 class Metrics(object):
   @staticmethod
-  def confusion_matrix(critic, n_classes, n_samples, dataset):
+  def confusion_matrix(critic, n_classes, n_samples, dataset, smoothen=True):
     cm = np.zeros((n_classes,n_classes))
     device_name = tf.test.gpu_device_name()
     if device_name == '/device:GPU:0':
       for label in range(n_classes):
         for i in range(n_samples):
-          [labels_real, X_real], y_real = dataset.generate_real_samples(1)
+          [labels_real, X_real], y_real = dataset.generate_real_samples(1, smoothen)
           while int(labels_real.numpy().item()) != label:
-            [labels_real, X_real], y_real = dataset.generate_real_samples(1)
+            [labels_real, X_real], y_real = dataset.generate_real_samples(1, smoothen)
           with tf.device('/device:GPU:0'):
             probs = critic.predict([np.arange(n_classes), np.repeat(X_real, n_classes, axis=0)])
             cm[np.argmax(probs), int(labels_real.numpy().item())] += 1
