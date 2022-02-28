@@ -3,6 +3,47 @@ import numpy as np
 import tensorflow as tf
 
 class Tools(object):
+  
+  @staticmethod
+  # Adapted from https://github.com/papagina/RotationContinuity/blob/master/shapenet/code/tools.py.
+  # euler => tf.Tensor(batch, joints * 3) (-1, 69)
+  # batch => batch_size
+  # joints => no. of joints
+  # rotation_matrices => tf.Tensor(batch, joints, 3, 3)
+  def rotation_matrices_from_euler(euler):
+    batch = euler.shape[0]
+    joints = int(euler.shape[1] / 3)
+    b = euler.reshape(batch, joints, 3)   
+    c1 = np.cos(np.deg2rad(b[:, :, 0])).reshape(batch, joints, 1, 1)
+    s1 = np.sin(np.deg2rad(b[:, :, 0])).reshape(batch, joints, 1, 1)
+    c2 = np.cos(np.deg2rad(b[:, :, 2])).reshape(batch, joints, 1, 1)
+    s2 = np.sin(np.deg2rad(b[:, :, 2])).reshape(batch, joints, 1, 1)
+    c3 = np.cos(np.deg2rad(b[:, :, 1])).reshape(batch, joints, 1, 1)
+    s3 = np.cos(np.deg2rad(b[:, :, 1])).reshape(batch, joints, 1, 1)    
+    row1=np.concatenate((c2*c3,          -s2,    c2*s3         ), 3)
+    row2=np.concatenate((c1*s2*c3+s1*s3, c1*c2,  c1*s2*s3-s1*c3), 3)
+    row3=np.concatenate((s1*s2*c3-c1*s3, s1*c2,  s1*s2*s3+c1*c3), 3)
+    matrix = np.concatenate((row1, row2, row3), 2)     
+    return matrix
+
+  # Adapted from https://github.com/papagina/RotationContinuity/blob/master/shapenet/code/tools.py.
+  # rotation_matrices => tf.Tensor(batch, joints, 3, 3)
+  # quaterions => (batch, joints, 3)
+  @staticmethod
+  def quaternions_from_rotation_matrices(matrices):
+    batch=matrices.shape[0]
+    joints = matrices.shape[1]
+    w=torch.sqrt(1.0 + matrices[:,0,0] + matrices[:,1,1] + matrices[:,2,2]) / 2.0
+    w = torch.max (w , torch.autograd.Variable(torch.zeros(batch).cuda())+1e-8) #batch
+    w4 = 4.0 * w;
+    x= (matrices[:,2,1] - matrices[:,1,2]) / w4 # x => (batch, joints, 1, 1)
+    y= (matrices[:,0,2] - matrices[:,2,0]) / w4
+    z= (matrices[:,1,0] - matrices[:,0,1]) / w4
+        
+    quats = torch.cat( (w.view(batch,1), x.view(batch, 1),y.view(batch, 1), z.view(batch, 1) ), 1   )
+        
+    return quats
+
   @staticmethod
   def generate_latent_points(latent_dim, n_samples, n_classes):
     # generate points in the latent space
