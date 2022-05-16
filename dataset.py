@@ -25,7 +25,8 @@ class Dataset(object):
                 path,
                 # path to drive will be constant, go to the folder named the emotion and load all the files in it.
                 step_size = 20,
-                frames = 400
+                frames = 400,
+                validation = 0
     ):
     self.emotions = np.array(emotions).reshape((-1))
     self.step_size = step_size
@@ -38,10 +39,14 @@ class Dataset(object):
     self.ordinalencoder.fit_transform(self.emotions.reshape((-1,1)))
     # to encode: self.ordinalencoder.transform(emotions.reshape((-1,1)))
     # to decode: self.ordinalencoder.inverse_transform([[2]])
-    self.samples = np.zeros(self.emotions.shape[0])
     self.Y_vec = []
     self.X = []
     self.Y_ord = []
+    self.validation = validation
+    if self.validation > 0:
+      self.Y_vec_val = []
+      self.X_val = []
+      self.Y_ord_val = []
     self.data = mocapdata.MocapData()
     self.feature_names = []  
     self.position_features = ['Hips_Xposition', 'Hips_Yposition', 'Hips_Zposition']
@@ -57,7 +62,11 @@ class Dataset(object):
       print(emotion)
       one_hot_encoded_emotion = self.onehotencoder.transform([[emotion]]).toarray().reshape((-1))
       ordinal_encoded_emotion = self.ordinalencoder.transform([[emotion]]).reshape((-1))
-      for file_name in tqdm(file_names):
+      if self.validation > 0:
+        val_split = np.ceil(len(file_names) * self.validation)
+        train_files = file_names[:-val_split]
+        val_files = file_names[val_split:]
+      for file_name in tqdm(train_files):
         file_path = data_path + '/' + file_name
         parser.parse(file_path)
         parser.data.values = parser.data.values[1:]  
@@ -66,10 +75,20 @@ class Dataset(object):
         for i in range(no_of_parts):
           sample = parser.data.values[i * self.step_size:i * self.step_size + self.frames]
           self.X.append(np.array(sample.drop(columns=self.position_features)))
-          if np.array(sample.drop(columns=self.position_features)).shape == (200,72):
-            print(file_name)
           self.Y_vec.append(one_hot_encoded_emotion)
           self.Y_ord.append(ordinal_encoded_emotion)
+      if self.validation > 0:
+        for file_name in tqdm(val_files):
+          file_path = data_path + '/' + file_name
+          parser.parse(file_path)
+          parser.data.values = parser.data.values[1:]  
+          length = len(parser.data.values)
+          no_of_parts = (length - self.frames) // self.step_size
+          for i in range(no_of_parts):
+            sample = parser.data.values[i * self.step_size:i * self.step_size + self.frames]
+            self.X_val.append(np.array(sample.drop(columns=self.position_features)))
+            self.Y_vec_val.append(one_hot_encoded_emotion)
+            self.Y_ord_val.append(ordinal_encoded_emotion)
 
     self.data = parser.data
     self.feature_names = parser.data.values.columns   #.drop(self.position_features)
@@ -77,6 +96,9 @@ class Dataset(object):
     self.X = np.array(self.X)
     self.Y_vec = np.array(self.Y_vec)
     self.Y_ord = np.array(self.Y_ord)
+    self.X_val = np.array(self.X_val)
+    self.Y_vec_val = np.array(self.Y_vec_val)
+    self.Y_ord_val = np.array(self.Y_ord_val)
 
     self.n_features = self.X.shape[2]
 
@@ -136,18 +158,18 @@ class Dataset(object):
       return self.X.shape[0]
 
   @staticmethod
-  def smoothen(rotation_data):
+  def smoothen(rotation_data):  # not good results
     sin = np.sin(np.deg2rad(rotation_data))
     cos = np.cos(np.deg2rad(rotation_data))
     return np.concatenate((sin, cos), axis=2)
 
   @staticmethod
-  def atan(rotation_data):
+  def atan(rotation_data):  # revert smoothen
     sin = rotation_data[:,:,:int(rotation_data.shape[2]/2)]
     cos = rotation_data[:,:,int(rotation_data.shape[2]/2):]
     return np.arctan2(sin, cos) * 180 / np.pi
 
-  # For the simple LSTM model called Classifier can check if Classifier is better with smoothened data
+  # For the simple LSTM model called Classifier
   def train_test_split(self, test_size = 0.33, ord = False, smoothen=False):
     size = self.X.shape[0]
     index = [*range(size)]
@@ -163,8 +185,11 @@ class Dataset(object):
     split = size - int(size * test_size)
     return X_shuffled[0:split], Y_shuffled[0:split], X_shuffled[split:], Y_shuffled[split:]
 
-  def generate_real_samples(self, n_samples, smoothen=True):
-    seq, labels = self.X, self.Y_ord
+  def generate_real_samples(self, n_samples, smoothen=True, val=False):
+    if val:
+      seq, labels = self.X_val, self.Y_ord_val
+    else:
+      seq, labels = self.X, self.Y_ord
     r = np.random.randint(0, seq.shape[0], n_samples)
     labels = labels[r]
     if smoothen:

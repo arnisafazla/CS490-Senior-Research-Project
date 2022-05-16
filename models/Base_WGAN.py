@@ -117,7 +117,10 @@ class Base_WGAN(keras.Model):
                             labels_input, z_input = Tools.generate_latent_points(self.config['latent_dim'], self.config['batch_size'], self.config['n_classes'])
                             with tf.GradientTape() as tape:
                                 # Generate fake images from the latent vector
-                                fake_samples = self.generator([labels_input, z_input], training=True)
+                                
+                                # fake_samples = self.generator([labels_input, z_input], training=True)
+                                [labels_input, fake_samples], y_fake = self.dataset.generate_fake_samples(self.config['batch_size'], smoothen=self.config['smoothen'])
+
                                 # Get the logits for the fake samples
                                 fake_logits = self.critic([labels_input, fake_samples], training=True)
                                 # Get the logits for the real images
@@ -140,6 +143,7 @@ class Base_WGAN(keras.Model):
 
                         # Train the generator
                         # Get the latent vector
+                        """
                         labels_input, z_input = Tools.generate_latent_points(self.config['latent_dim'], self.config['batch_size'], self.config['n_classes'])
                         with tf.GradientTape() as tape:
                             # Generate fake images using the generator
@@ -155,6 +159,8 @@ class Base_WGAN(keras.Model):
                         self.g_optimizer.apply_gradients(
                             zip(gen_gradient, self.generator.trainable_variables)
                         )
+                        """
+                        g_loss_batch = 0
                         self.train_metrics[0].append(np.array(c_loss_batch / self.config['n_critic']).tolist())
                         self.train_metrics[1].append(np.array(g_loss_batch).tolist())
                         # c_loss_epoch.append(c_loss_batch / self.config['n_critic'])
@@ -172,7 +178,11 @@ class Base_WGAN(keras.Model):
                         json.dump(self.train_metrics, file)
                     if verbose == 2:
                         self.save_checkpoint(epoch_dir, n_samples=1)
-                        cm = Metrics.confusion_matrix(critic=self.critic, n_classes=self.config['n_classes'], n_samples=10, dataset=self.dataset, smoothen=self.config['smoothen'])
+                        # apply on validation data
+                        labels = np.arange(self.config['n_classes'])
+                        cm = Metrics.confusion_matrix(critic=self.critic, n_classes=self.config['n_classes'], n_samples=10, dataset=self.dataset, smoothen=self.config['smoothen'], val=self.config['validation'])
+                        class_names = self.dataset.ordinalencoder.inverse_transform([labels])
+                        Tools.draw_confusion_matrix(cm, class_names)
                         with open(os.path.join(epoch_dir, 'cm.txt'), 'w') as file:
                             json.dump(cm, file)
 

@@ -1,9 +1,24 @@
-import logging
+import logging, copy, math
 import numpy as np
 import tensorflow as tf
+import seaborn as sns
 
 class Tools(object):
-  
+  @staticmethod
+  # convert the euler angles of the dataset from YXZ format to ZYX format
+  def YXZ_to_ZYX(matrix):
+    batch = matrix.shape[0]
+    joints = int(matrix.shape[1] / 3)
+    b = copy.deepcopy(a.reshape(batch, joints,3))
+    Y = b[:, :, 0]
+    X = b[:, :, 1]
+    Z = b[:, :, 2]
+    c = copy.deepcopy(b)
+    c[:, :, 0] = Z
+    c[:, :, 1] = Y
+    c[:, :, 2] = X
+    return c
+
   @staticmethod
   # Adapted from https://github.com/papagina/RotationContinuity/blob/master/shapenet/code/tools.py.
   # euler => tf.Tensor(batch, joints * 3) (-1, 69)
@@ -61,17 +76,29 @@ class Tools(object):
       result[l[0]] = l[1]
     return result
 
+  @staticmethod
+  def draw_confusion_matrix(cm, names):
+    ax = sns.heatmap(np.array(cm) / 10, annot=True, cmap='Blues')
+    ax.set_title('Confusion Matrix\n\n');
+    ax.set_xlabel('\nPredicted Values')
+    ax.set_ylabel('Actual Values ');
+    ## Ticket labels - List must be in alphabetical order
+    ax.xaxis.set_ticklabels(names)
+    ax.yaxis.set_ticklabels(names)
+    ## Display the visualization of the Confusion Matrix.
+    plt.show()
+
 class Metrics(object):
   @staticmethod
-  def confusion_matrix(critic, n_classes, n_samples, dataset, smoothen=True):
+  def confusion_matrix(critic, n_classes, n_samples, dataset, smoothen=True, val=False):
     cm = np.zeros((n_classes,n_classes))
     device_name = tf.test.gpu_device_name()
     if device_name == '/device:GPU:0':
       for label in range(n_classes):
         for i in range(n_samples):
-          [labels_real, X_real], y_real = dataset.generate_real_samples(1, smoothen)
+          [labels_real, X_real], y_real = dataset.generate_real_samples(1, smoothen, val=val)
           while int(labels_real.numpy().item()) != label:
-            [labels_real, X_real], y_real = dataset.generate_real_samples(1, smoothen)
+            [labels_real, X_real], y_real = dataset.generate_real_samples(1, smoothen, val=val)
           with tf.device('/device:GPU:0'):
             probs = critic.predict([np.arange(n_classes), np.repeat(X_real, n_classes, axis=0)])
             cm[np.argmax(probs), int(labels_real.numpy().item())] += 1
