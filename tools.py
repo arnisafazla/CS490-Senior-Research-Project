@@ -2,6 +2,7 @@ import logging, copy, math
 import numpy as np
 import tensorflow as tf
 import seaborn as sns
+import matplotlib.pyplot as plt
 
 class Tools(object):
   @staticmethod
@@ -78,6 +79,7 @@ class Tools(object):
 
   @staticmethod
   def draw_confusion_matrix(cm, names):
+    names = names.flatten()
     ax = sns.heatmap(np.array(cm) / 10, annot=True, cmap='Blues')
     ax.set_title('Confusion Matrix\n\n');
     ax.set_xlabel('\nPredicted Values')
@@ -101,7 +103,8 @@ class Metrics(object):
             [labels_real, X_real], y_real = dataset.generate_real_samples(1, smoothen, val=val)
           with tf.device('/device:GPU:0'):
             probs = critic.predict([np.arange(n_classes), np.repeat(X_real, n_classes, axis=0)])
-            cm[np.argmax(probs), int(labels_real.numpy().item())] += 1
+            cm[int(labels_real.numpy().item()), np.argmax(probs)] += 1
+            # rows are the actual values, cols are the predicted values
       return cm.tolist()
     else:
       with tf.device('/cpu:0'):

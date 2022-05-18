@@ -50,6 +50,31 @@ class Dataset(object):
     self.data = mocapdata.MocapData()
     self.feature_names = []  
     self.position_features = ['Hips_Xposition', 'Hips_Yposition', 'Hips_Zposition']
+    self.rotation_features = ['Hips_Yrotation',
+       'Hips_Xrotation', 'Hips_Zrotation', 'Chest_Yrotation',
+       'Chest_Xrotation', 'Chest_Zrotation', 'Chest2_Yrotation',
+       'Chest2_Xrotation', 'Chest2_Zrotation', 'Chest3_Yrotation',
+       'Chest3_Xrotation', 'Chest3_Zrotation', 'Chest4_Yrotation',
+       'Chest4_Xrotation', 'Chest4_Zrotation', 'Neck_Yrotation',
+       'Neck_Xrotation', 'Neck_Zrotation', 'Head_Yrotation', 'Head_Xrotation',
+       'Head_Zrotation', 'RightCollar_Yrotation', 'RightCollar_Xrotation',
+       'RightCollar_Zrotation', 'RightShoulder_Yrotation',
+       'RightShoulder_Xrotation', 'RightShoulder_Zrotation',
+       'RightElbow_Yrotation', 'RightElbow_Xrotation', 'RightElbow_Zrotation',
+       'RightWrist_Yrotation', 'RightWrist_Xrotation', 'RightWrist_Zrotation',
+       'LeftCollar_Yrotation', 'LeftCollar_Xrotation', 'LeftCollar_Zrotation',
+       'LeftShoulder_Yrotation', 'LeftShoulder_Xrotation',
+       'LeftShoulder_Zrotation', 'LeftElbow_Yrotation', 'LeftElbow_Xrotation',
+       'LeftElbow_Zrotation', 'LeftWrist_Yrotation', 'LeftWrist_Xrotation',
+       'LeftWrist_Zrotation', 'RightHip_Yrotation', 'RightHip_Xrotation',
+       'RightHip_Zrotation', 'RightKnee_Yrotation', 'RightKnee_Xrotation',
+       'RightKnee_Zrotation', 'RightAnkle_Yrotation', 'RightAnkle_Xrotation',
+       'RightAnkle_Zrotation', 'RightToe_Yrotation', 'RightToe_Xrotation',
+       'RightToe_Zrotation', 'LeftHip_Yrotation', 'LeftHip_Xrotation',
+       'LeftHip_Zrotation', 'LeftKnee_Yrotation', 'LeftKnee_Xrotation',
+       'LeftKnee_Zrotation', 'LeftAnkle_Yrotation', 'LeftAnkle_Xrotation',
+       'LeftAnkle_Zrotation', 'LeftToe_Yrotation', 'LeftToe_Xrotation',
+       'LeftToe_Zrotation']
     self.path = path
     self.frames = frames
     self.__load_data__()
@@ -63,10 +88,10 @@ class Dataset(object):
       one_hot_encoded_emotion = self.onehotencoder.transform([[emotion]]).toarray().reshape((-1))
       ordinal_encoded_emotion = self.ordinalencoder.transform([[emotion]]).reshape((-1))
       if self.validation > 0:
-        val_split = np.ceil(len(file_names) * self.validation)
-        train_files = file_names[:-val_split]
-        val_files = file_names[val_split:]
-      for file_name in tqdm(train_files):
+        val_split = int(np.ceil(len(file_names) * self.validation))
+        val_files = file_names[-val_split:]
+        file_names = file_names[:-val_split]
+      for file_name in tqdm(file_names):
         file_path = data_path + '/' + file_name
         parser.parse(file_path)
         parser.data.values = parser.data.values[1:]  
@@ -74,7 +99,8 @@ class Dataset(object):
         no_of_parts = (length - self.frames) // self.step_size
         for i in range(no_of_parts):
           sample = parser.data.values[i * self.step_size:i * self.step_size + self.frames]
-          self.X.append(np.array(sample.drop(columns=self.position_features)))
+          arr = np.array(sample[self.rotation_features])
+          self.X.append(arr)
           self.Y_vec.append(one_hot_encoded_emotion)
           self.Y_ord.append(ordinal_encoded_emotion)
       if self.validation > 0:
@@ -86,7 +112,8 @@ class Dataset(object):
           no_of_parts = (length - self.frames) // self.step_size
           for i in range(no_of_parts):
             sample = parser.data.values[i * self.step_size:i * self.step_size + self.frames]
-            self.X_val.append(np.array(sample.drop(columns=self.position_features)))
+            arr = np.array(sample[self.rotation_features])
+            self.X_val.append(arr)            
             self.Y_vec_val.append(one_hot_encoded_emotion)
             self.Y_ord_val.append(ordinal_encoded_emotion)
 
@@ -96,9 +123,10 @@ class Dataset(object):
     self.X = np.array(self.X)
     self.Y_vec = np.array(self.Y_vec)
     self.Y_ord = np.array(self.Y_ord)
-    self.X_val = np.array(self.X_val)
-    self.Y_vec_val = np.array(self.Y_vec_val)
-    self.Y_ord_val = np.array(self.Y_ord_val)
+    if self.validation > 0:
+      self.X_val = np.array(self.X_val)
+      self.Y_vec_val = np.array(self.Y_vec_val)
+      self.Y_ord_val = np.array(self.Y_ord_val)
 
     self.n_features = self.X.shape[2]
 
@@ -185,7 +213,7 @@ class Dataset(object):
     split = size - int(size * test_size)
     return X_shuffled[0:split], Y_shuffled[0:split], X_shuffled[split:], Y_shuffled[split:]
 
-  def generate_real_samples(self, n_samples, smoothen=True, val=False):
+  def generate_real_samples(self, n_samples, smoothen=False, val=False):
     if val:
       seq, labels = self.X_val, self.Y_ord_val
     else:
@@ -200,8 +228,11 @@ class Dataset(object):
     return [tf.convert_to_tensor(labels), tf.convert_to_tensor(X, dtype=tf.dtypes.float32)], tf.convert_to_tensor(y)
 
   # not necessary anymore?
-  def generate_fake_samples(self, n_samples, smoothen=True):
-    seq, labels = self.X, self.Y_ord
+  def generate_fake_samples(self, n_samples, smoothen=False, val=False):
+    if val:
+      seq, labels = self.X_val, self.Y_ord_val
+    else:
+      seq, labels = self.X, self.Y_ord
     r = np.random.randint(0, seq.shape[0], n_samples)
     labels_tmp = labels[r].reshape((-1,))
     if smoothen:

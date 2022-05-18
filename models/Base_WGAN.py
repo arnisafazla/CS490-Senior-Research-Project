@@ -36,10 +36,11 @@ class Base_WGAN(keras.Model):
         if model_load == None:
           self.config = config
           self.critic = critic
-          self.generator = generator
+          if self.config['only_critic'] == False:
+            self.generator = generator
           self.model_name = name + datetime.datetime.now().strftime("%Y.%m.%d-%H:%M:%S")
           self.model_dir = os.path.join(dest_dir, self.model_name)
-          self.train_metrics = [list() for i in range(2)]   # c_loss, g_loss
+          self.train_metrics = [list() for i in range(3)]   # c_loss, g_loss
           self.start_epoch = 0
         else:
           self.model_dir = model_load[0:-len(os.path.basename(model_load))]
@@ -48,12 +49,13 @@ class Base_WGAN(keras.Model):
           if os.path.basename(model_load)[:5] != 'epoch':
             logging.error('model_load needs to be a path to an epoch folder, as in epoch_4.')
           self.critic = load_model(os.path.join(model_load, 'critic.h5'))
-          if self.config['generator_batch_norm']:
-            self.generator = load_model(os.path.join(model_load, 'generator.h5'), custom_objects={'ConditionalBatchNorm':ConditionalBatchNorm})
-          elif self.config['generator_layer_norm']:
-            self.generator = load_model(os.path.join(model_load, 'generator.h5'), custom_objects={'ConditionalLayerNorm':ConditionalLayerNorm})
-          elif self.config['generator_layer_norm_plus']:
-            self.generator = load_model(os.path.join(model_load, 'generator.h5'), custom_objects={'ConditionalLayerNormPlus':ConditionalLayerNormPlus})
+          if self.config['only_critic'] == False:
+            if self.config['generator_batch_norm']:
+              self.generator = load_model(os.path.join(model_load, 'generator.h5'), custom_objects={'ConditionalBatchNorm':ConditionalBatchNorm})
+            elif self.config['generator_layer_norm']:
+              self.generator = load_model(os.path.join(model_load, 'generator.h5'), custom_objects={'ConditionalLayerNorm':ConditionalLayerNorm})
+            elif self.config['generator_layer_norm_plus']:
+              self.generator = load_model(os.path.join(model_load, 'generator.h5'), custom_objects={'ConditionalLayerNormPlus':ConditionalLayerNormPlus})
           self.model_dir = model_load[0:-len(os.path.basename(model_load))]
           with open(os.path.join(model_load, 'train_metrics.txt')) as file:
             self.train_metrics = json.load(file)
@@ -97,10 +99,13 @@ class Base_WGAN(keras.Model):
             with open(os.path.join(self.model_dir, 'config.json'), 'w') as file:
                 json.dump(self.config, file)
             plot_model(self.critic, show_shapes=True, show_layer_names=True, to_file=os.path.join(self.model_dir, 'critic.png'))
-            plot_model(self.generator, show_shapes=True, show_layer_names=True, to_file=os.path.join(self.model_dir, 'generator.png'))
+            if self.config['only_critic'] == False:
+              plot_model(self.generator, show_shapes=True, show_layer_names=True, to_file=os.path.join(self.model_dir, 'generator.png'))
         device_name = tf.test.gpu_device_name()
         if device_name == '/device:GPU:0':
             with tf.device('/device:GPU:0'):
+                labels = np.arange(self.config['n_classes'])
+                class_names = np.array([self.dataset.ordinalencoder.inverse_transform([[labels[i]]]) for i in labels])
                 # tensorboard = tf.keras.callbacks.TensorBoard(os.path.join(logdir, self.name), histogram_freq=1)
                 # tensorboard.set_model(self.critic)
                 # tensorboard.set_model(self.generator)
@@ -117,9 +122,10 @@ class Base_WGAN(keras.Model):
                             labels_input, z_input = Tools.generate_latent_points(self.config['latent_dim'], self.config['batch_size'], self.config['n_classes'])
                             with tf.GradientTape() as tape:
                                 # Generate fake images from the latent vector
-                                
-                                # fake_samples = self.generator([labels_input, z_input], training=True)
-                                [labels_input, fake_samples], y_fake = self.dataset.generate_fake_samples(self.config['batch_size'], smoothen=self.config['smoothen'])
+                                if self.config['only_critic'] == False:
+                                  fake_samples = self.generator([labels_input, z_input], training=True)
+                                else:
+                                  [labels_input, fake_samples], y_fake = self.dataset.generate_fake_samples(self.config['batch_size'], smoothen=self.config['smoothen'])
 
                                 # Get the logits for the fake samples
                                 fake_logits = self.critic([labels_input, fake_samples], training=True)
@@ -143,48 +149,58 @@ class Base_WGAN(keras.Model):
 
                         # Train the generator
                         # Get the latent vector
-                        """
-                        labels_input, z_input = Tools.generate_latent_points(self.config['latent_dim'], self.config['batch_size'], self.config['n_classes'])
-                        with tf.GradientTape() as tape:
-                            # Generate fake images using the generator
-                            fake_samples = self.generator([labels_input, z_input], training=True)
-                            # Get the discriminator logits for fake images
-                            fake_logits = self.critic([labels_input, fake_samples], training=True)
-                            # Calculate the generator loss
-                            g_loss_batch = self.g_loss_fn(fake_logits)
+                        if self.config['only_critic'] == False:
+                          labels_input, z_input = Tools.generate_latent_points(self.config['latent_dim'], self.config['batch_size'], self.config['n_classes'])
+                          with tf.GradientTape() as tape:
+                              # Generate fake images using the generator
+                              fake_samples = self.generator([labels_input, z_input], training=True)
+                              # Get the discriminator logits for fake images
+                              fake_logits = self.critic([labels_input, fake_samples], training=True)
+                              # Calculate the generator loss
+                              g_loss_batch = self.g_loss_fn(fake_logits)
 
-                        # Get the gradients w.r.t the generator loss
-                        gen_gradient = tape.gradient(g_loss_batch, self.generator.trainable_variables)
-                        # Update the weights of the generator using the generator optimizer
-                        self.g_optimizer.apply_gradients(
-                            zip(gen_gradient, self.generator.trainable_variables)
-                        )
-                        """
-                        g_loss_batch = 0
-                        self.train_metrics[0].append(np.array(c_loss_batch / self.config['n_critic']).tolist())
-                        self.train_metrics[1].append(np.array(g_loss_batch).tolist())
+                          # Get the gradients w.r.t the generator loss
+                          gen_gradient = tape.gradient(g_loss_batch, self.generator.trainable_variables)
+                          # Update the weights of the generator using the generator optimizer
+                          self.g_optimizer.apply_gradients(
+                              zip(gen_gradient, self.generator.trainable_variables)
+                          )
+                        else:
+                          g_loss_batch = 0
+                        if self.config['validation']:
+                          [labels_real, X_real], y_real = self.dataset.generate_real_samples(self.config['batch_size'], smoothen=self.config['smoothen'], val=True)
+                          [labels_input, fake_samples], y_fake = self.dataset.generate_fake_samples(self.config['batch_size'], smoothen=self.config['smoothen'], val=True)
+                          fake_logits = self.critic([labels_input, fake_samples], training=False)
+                          real_logits = self.critic([labels_real, X_real], training=False)
+                          val_loss = self.c_loss_fn(real=real_logits, fake=fake_logits)
+                          # g_loss batch is validation loss of critic if we run it in validation mode
+                        else:
+                          val_loss = 0
+                        self.train_metrics[0].append(c_loss_batch / self.config['n_critic'].tolist())
+                        self.train_metrics[1].append(g_loss_batch)
+                        self.train_metrics[2].append(val_loss)
                         # c_loss_epoch.append(c_loss_batch / self.config['n_critic'])
                         # g_loss_epoch.append(g_loss_batch)
                         if verbose == 1 or verbose == 2:
-                            print('>%d, %d/%d, c_loss=%.3f, g_loss=%.3f' %(epoch+1, batch+1, bat_per_epo, c_loss_batch / self.config['n_critic'], g_loss_batch))
+                            print('>%d, %d/%d, c_loss=%.3f, g_loss=%.3f, val_loss=%.3f' %(epoch+1, batch+1, bat_per_epo, c_loss_batch / self.config['n_critic'], g_loss_batch, val_loss))
                     # logs = [mean(c_loss_epoch), mean(g_loss_epoch)]
                     # names = ["c_loss", "g_loss"]
                     # tensorboard.on_epoch_end(epoch+1, Tools.named_logs(names, logs))
                     epoch_dir = os.path.join(self.model_dir, 'epoch_' + str(epoch+1))
                     os.mkdir(epoch_dir)
-                    self.generator.save(os.path.join(epoch_dir, 'generator.h5'), include_optimizer=True)
+                    if self.config['only_critic'] == False:
+                      self.generator.save(os.path.join(epoch_dir, 'generator.h5'), include_optimizer=True)
                     self.critic.save(os.path.join(epoch_dir, 'critic.h5'), include_optimizer=True)
                     with open(os.path.join(epoch_dir, 'train_metrics.txt'), 'w') as file:
                         json.dump(self.train_metrics, file)
                     if verbose == 2:
+                      if self.config['only_critic'] == False:
                         self.save_checkpoint(epoch_dir, n_samples=1)
-                        # apply on validation data
-                        labels = np.arange(self.config['n_classes'])
-                        cm = Metrics.confusion_matrix(critic=self.critic, n_classes=self.config['n_classes'], n_samples=10, dataset=self.dataset, smoothen=self.config['smoothen'], val=self.config['validation'])
-                        class_names = self.dataset.ordinalencoder.inverse_transform([labels])
-                        Tools.draw_confusion_matrix(cm, class_names)
-                        with open(os.path.join(epoch_dir, 'cm.txt'), 'w') as file:
-                            json.dump(cm, file)
+                      # apply on validation data
+                      cm = Metrics.confusion_matrix(critic=self.critic, n_classes=self.config['n_classes'], n_samples=10, dataset=self.dataset, smoothen=self.config['smoothen'], val=self.config['validation'])
+                      Tools.draw_confusion_matrix(cm, class_names)
+                      with open(os.path.join(epoch_dir, 'cm.txt'), 'w') as file:
+                        json.dump(cm, file)
 
         else:
           with tf.device('/cpu:0'):
