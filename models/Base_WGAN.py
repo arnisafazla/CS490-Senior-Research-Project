@@ -116,7 +116,7 @@ class Base_WGAN(keras.Model):
                     # c_loss_epoch, g_loss_epoch = list(), list()
                     for batch in range(bat_per_epo):
                         c_loss_batch = 0
-                        [labels_real, X_real], y_real = self.dataset.generate_real_samples(self.config['batch_size'], smoothen=self.config['smoothen'])
+                        [labels_real, X_real], y_real = self.dataset.generate_real_samples(self.config['batch_size'], rep=self.config['representation'])
                         for _ in range(self.config['n_critic']):
                             # Get the latent vector
                             labels_input, z_input = Tools.generate_latent_points(self.config['latent_dim'], self.config['batch_size'], self.config['n_classes'])
@@ -125,7 +125,7 @@ class Base_WGAN(keras.Model):
                                 if self.config['only_critic'] == False:
                                   fake_samples = self.generator([labels_input, z_input], training=True)
                                 else:
-                                  [labels_input, fake_samples], y_fake = self.dataset.generate_fake_samples(self.config['batch_size'], smoothen=self.config['smoothen'])
+                                  [labels_input, fake_samples], y_fake = self.dataset.generate_fake_samples(self.config['batch_size'], rep=self.config['representation'])
 
                                 # Get the logits for the fake samples
                                 fake_logits = self.critic([labels_input, fake_samples], training=True)
@@ -168,17 +168,17 @@ class Base_WGAN(keras.Model):
                         else:
                           g_loss_batch = 0
                         if self.config['validation']:
-                          [labels_real, X_real], y_real = self.dataset.generate_real_samples(self.config['batch_size'], smoothen=self.config['smoothen'], val=True)
-                          [labels_input, fake_samples], y_fake = self.dataset.generate_fake_samples(self.config['batch_size'], smoothen=self.config['smoothen'], val=True)
+                          [labels_real, X_real], y_real = self.dataset.generate_real_samples(self.config['batch_size'], val=True, rep=self.config['representation'])
+                          [labels_input, fake_samples], y_fake = self.dataset.generate_fake_samples(self.config['batch_size'], val=True, rep=self.config['representation'])
                           fake_logits = self.critic([labels_input, fake_samples], training=False)
                           real_logits = self.critic([labels_real, X_real], training=False)
                           val_loss = self.c_loss_fn(real=real_logits, fake=fake_logits)
                           # g_loss batch is validation loss of critic if we run it in validation mode
                         else:
                           val_loss = 0
-                        self.train_metrics[0].append(c_loss_batch / self.config['n_critic'].tolist())
-                        self.train_metrics[1].append(g_loss_batch)
-                        self.train_metrics[2].append(val_loss)
+                        self.train_metrics[0].append(int(c_loss_batch / self.config['n_critic']))
+                        self.train_metrics[1].append(int(g_loss_batch))
+                        self.train_metrics[2].append(int(val_loss))
                         # c_loss_epoch.append(c_loss_batch / self.config['n_critic'])
                         # g_loss_epoch.append(g_loss_batch)
                         if verbose == 1 or verbose == 2:
@@ -192,12 +192,12 @@ class Base_WGAN(keras.Model):
                       self.generator.save(os.path.join(epoch_dir, 'generator.h5'), include_optimizer=True)
                     self.critic.save(os.path.join(epoch_dir, 'critic.h5'), include_optimizer=True)
                     with open(os.path.join(epoch_dir, 'train_metrics.txt'), 'w') as file:
-                        json.dump(self.train_metrics, file)
+                        json.dump(list(self.train_metrics), file)
                     if verbose == 2:
                       if self.config['only_critic'] == False:
                         self.save_checkpoint(epoch_dir, n_samples=1)
                       # apply on validation data
-                      cm = Metrics.confusion_matrix(critic=self.critic, n_classes=self.config['n_classes'], n_samples=10, dataset=self.dataset, smoothen=self.config['smoothen'], val=self.config['validation'])
+                      cm = Metrics.confusion_matrix(critic=self.critic, n_classes=self.config['n_classes'], n_samples=10, dataset=self.dataset, val=self.config['validation'])
                       Tools.draw_confusion_matrix(cm, class_names)
                       with open(os.path.join(epoch_dir, 'cm.txt'), 'w') as file:
                         json.dump(cm, file)
@@ -240,7 +240,7 @@ class Base_WGAN(keras.Model):
       # visualize and plot poses
       position_transformed = []
       for i in range(outputs.shape[0]):
-        position_transformed.append(self.dataset.transform(np.array([outputs[i]]), smoothen=self.config['smoothen'])[0])
+        position_transformed.append(self.dataset.transform(np.array([outputs[i]]))[0])
       for i, mocap_track in enumerate(position_transformed):
         fig = self.dataset.stickfigure(mocap_track, step=20, cols=5, title=self.dataset.ordinalencoder.inverse_transform([[labels[i]]]), figsize=(8,8))
         fig.savefig(os.path.join(epoch_dir, str(i) + '.png'))

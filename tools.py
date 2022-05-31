@@ -1,6 +1,5 @@
 import logging, copy, math
 import numpy as np
-import tensorflow as tf
 import seaborn as sns
 import matplotlib.pyplot as plt
 import os, sys
@@ -8,19 +7,28 @@ import tensorflow as tf
 
 main_dir = os.getcwd()
 sys.path.append(os.path.join(main_dir, 'PyMO'))
-from pymo.rotation_tools import Rotation
 
 class Tools(object):
   @staticmethod
+  def _from_euler(y):
+    ca = np.cos(y[:,0] * np.pi / 180)
+    cb = np.cos(y[:,1] * np.pi / 180)
+    cg = np.cos(y[:,2] * np.pi / 180)
+    sa = np.sin(y[:,0] * np.pi / 180)
+    sb = np.sin(y[:,1] * np.pi / 180)
+    sg = np.sin(y[:,2] * np.pi / 180)        
+    return np.stack((np.stack((cg*cb+sa*sb*sg, sg*ca, -cg*sb+sg*sa*cb), axis=1),
+                          np.stack((-sg*cb+cg*sa*sb, cg*ca, sg*sb+cg*sa*cb), axis=1),
+                          np.stack((ca*sb, -sa, ca*cb), axis=1)), axis=1)
+
+  @staticmethod
   # convert euler values (shape: tracks x frames x features) of YXZ order
   # to rotation matrices (shape: tracks x frames x joints x 3 x 3)
-  def euler_to_rots(euler, rotation_order='YXZ'):
-    eul2 = euler.reshape(euler.shape[0], euler.shape[1], -1, 3)
-    eul3 = eul2.copy()
-    eul3[:,:,:,0] = eul2[:,:,:,1]
-    eul3[:,:,:,1] = eul2[:,:,:,0]
-    rots = np.array([[[Rotation([joint[0], joint[1], joint[2]], 'euler', rotation_order, from_deg=True).rotmat for joint in frame] for frame in track] for track in eul3])
-    return rots
+  def euler_to_rots(euler):
+      shape = (euler.shape[0], euler.shape[1], int(euler.shape[2]/3), 3, 3)
+      eul2 = euler.reshape(-1, 3)
+      rots = Tools._from_euler(eul2).reshape(shape)
+      return rots
 
   @staticmethod
   # given rotation matrices (shape: tracks x frames x joints x 3 x 3)
@@ -42,8 +50,6 @@ class Tools(object):
         rots_dict[joints[i]] = rots[j,:,i,:,:]
       rots_tracks.append(rots_dict)
     return rots_tracks
-
-
 
   # Adapted from "On the continuity of rotation representations in neural networks"
   # Yi Zhou, Connelly Barnes, Jingwan Lu, Jimei Yang, Hao Li.
@@ -113,29 +119,11 @@ class Tools(object):
   def rots_to_ort6d(rots):
     return tf.reshape(Tools.tf_matrix_to_rotation6d(tf.convert_to_tensor(rots)), [rots.shape[0],rots.shape[1],rots.shape[2],6])
 
+  @staticmethod
   # given tf tensor ort6d representation (shape: tracks x frames x joints x 6)
   # return np array rotation matrices (shape: tracks x frames x joints x 3 x 3)
-  @staticmethod
   def ort6d_to_rots(ort6d, tracks, frames, joints):
     return np.array(tf.reshape(Tools.tf_rotation6d_to_matrix(ort6d), [tracks,frames,joints,3,3]))
-
-  @staticmethod
-  # Adapted from https://github.com/papagina/RotationContinuity/blob/master/shapenet/code/tools.py.
-  # given 6d representation (shape:)
-  # return rotation matrices (shape tracks x frames x joints x 3 x 3)
-  def ort6d_to_rots(ort6d):
-    batch=ort6d.shape[0]
-    joints = ort6d.shape[1]
-    w=np.sqrt(1.0 + ort6d[:,0,0] + ort6d[:,1,1] + ort6d[:,2,2]) / 2.0
-    w = np.max (w , torch.autograd.Variable(torch.zeros(batch).cuda())+1e-8) #batch
-    w4 = 4.0 * w;
-    x= (matrices[:,2,1] - matrices[:,1,2]) / w4 # x => (batch, joints, 1, 1)
-    y= (matrices[:,0,2] - matrices[:,2,0]) / w4
-    z= (matrices[:,1,0] - matrices[:,0,1]) / w4
-        
-    quats = torch.cat( (w.view(batch,1), x.view(batch, 1),y.view(batch, 1), z.view(batch, 1) ), 1   )
-        
-    return quats
 
   @staticmethod
   def generate_latent_points(latent_dim, n_samples, n_classes):

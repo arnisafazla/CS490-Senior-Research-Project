@@ -20,6 +20,8 @@ from pymo import preprocessing
 from pymo import data as mocapdata
 from tools import Tools
 
+# representation can be '6d', 'rot' or 'eul'.
+# the data is kept as tf Tensors if representation == '6d'
 class Dataset(object):
   def __init__(
                 self, 
@@ -27,11 +29,16 @@ class Dataset(object):
                 path,
                 # path to drive will be constant, go to the folder named the emotion and load all the files in it.
                 step_size = 20,
-                frames = 400,
-                validation = 0
+                frames = 200,
+                validation = 0,
+                representation = '6d',
+                data = None
     ):
+    assert validation >= 0 and validation < 1
+    assert representation in ['6d', 'rot', 'eul'], "representation is {s}".format(s=representation)
     self.emotions = np.array(emotions).reshape((-1))
     self.step_size = step_size
+    self.representation = representation
     self.onehotencoder = OneHotEncoder()
     self.onehotencoder.fit_transform(self.emotions.reshape(-1,1))
     # to encode: self.onehotencoder.transform([['joy']]).toarray().reshape((-1))
@@ -79,7 +86,11 @@ class Dataset(object):
        'LeftToe_Zrotation']
     self.path = path
     self.frames = frames
-    self.__load_data__()
+    if data == None:
+      self.__load_data__()
+    else:
+      self.X, self.X_val, self.Y_ord, self.Y_ord_val, self.Y_vec, self.Y_vec_val = [data[key] for key in list(data.keys())[:6]]
+      self.data, self.feature_names, self.n_features = [data[key] for key in list(data.keys())[6:9]]
 
   def __load_data__(self):
     parser = parsers.BVHParser()
@@ -121,12 +132,17 @@ class Dataset(object):
 
     self.data = parser.data
     self.feature_names = parser.data.values.columns   #.drop(self.position_features)
-    
-    self.X = np.array(self.X)
+    if self.representation == '6d':
+      self.X = Tools.rots_to_ort6d(Tools.euler_to_rots(np.array(self.X)))
+    else:
+      self.X = np.array(self.X)
     self.Y_vec = np.array(self.Y_vec)
     self.Y_ord = np.array(self.Y_ord)
     if self.validation > 0:
-      self.X_val = np.array(self.X_val)
+      if self.representation == '6d':
+        self.X_val = Tools.rots_to_ort6d(Tools.euler_to_rots(np.array(self.X_val)))
+      else:
+        self.X_val = np.array(self.X_val)
       self.Y_vec_val = np.array(self.Y_vec_val)
       self.Y_ord_val = np.array(self.Y_ord_val)
 
@@ -187,52 +203,73 @@ class Dataset(object):
   def get_size(self):
       return self.X.shape[0]
 
+  # tracks x frames x joints x ?
+  def convert_representation(self, X, rep='6d'):
+    assert rep in ['6d', 'rot', 'eul'], "representation is {s}".format(s=repr)
+    if self.representation == '6d':
+      if rep == '6d':
+        X = X.numpy()
+      elif rep == 'rot':
+        X = Tools.ort6d_to_rots(X)
+    elif self.representation == 'rot':
+      if rep == '6d':
+        X = Tools.rots_to_ort6d(X).numpy()
+      elif rep == 'rot':
+        pass
+    elif self.representation == 'eul':
+      if rep == '6d':
+        X = Tools.rots_to_ort6d(Tools.euler_to_rots(X))
+      elif rep == 'rot':
+        X = Tools.euler_to_rots(X)
+      elif rep == 'eul':
+        pass
+    return X.reshape((X.shape[0], X.shape[1], -1))
+
   # For the simple LSTM model called Classifier
-  def train_test_split(self, test_size = 0.33, ord = False, smoothen=False):
+  def train_test_split(self, test_size = 0.33, ord = False, rep='6d'):
     size = self.X.shape[0]
     index = [*range(size)]
     random.shuffle(index)
     X_shuffled = np.array([self.X[i] for i in index])
-    if smoothen:
-      X_shuffled = self.smoothen(X_shuffled)
     if ord:
       Y_shuffled = np.array([self.Y_ord[i] for i in index])
     else:
       Y_shuffled = np.array([self.Y_vec[i] for i in index])
-    
     split = size - int(size * test_size)
-    return X_shuffled[0:split], Y_shuffled[0:split], X_shuffled[split:], Y_shuffled[split:]
+    X = self.convert_representation(X_shuffled, rep)
+    return  X[0:split], Y_shuffled[0:split], X[split:], Y_shuffled[split:]
 
-  def generate_real_samples(self, n_samples, val=False):
+  def generate_real_samples(self, n_samples, val=False, rep='6d'):
     if val:
       seq, labels = self.X_val, self.Y_ord_val
     else:
       seq, labels = self.X, self.Y_ord
     r = np.random.randint(0, seq.shape[0], n_samples)
     labels = labels[r]
-    X = seq[r]/180
+    X = tf.gather(seq, indices = r)
+    X = self.convert_representation(X, rep)
     y = -np.ones((n_samples, 1))
-    return [tf.convert_to_tensor(labels), tf.convert_to_tensor(X, dtype=tf.dtypes.float32)], tf.convert_to_tensor(y)
+    return [tf.convert_to_tensor(labels), tf.convert_to_tensor(X, dtype=tf.float32)], tf.convert_to_tensor(y)
 
   # not necessary anymore?
-  def generate_fake_samples(self, n_samples, val=False):
+  def generate_fake_samples(self, n_samples, val=False, rep='6d'):
     if val:
       seq, labels = self.X_val, self.Y_ord_val
     else:
       seq, labels = self.X, self.Y_ord
     r = np.random.randint(0, seq.shape[0], n_samples)
     labels_tmp = labels[r].reshape((-1,))
-    X = seq[r]/180
+    X = tf.gather(seq, indices = r)
+    X = self.convert_representation(X, rep)
     l = np.random.randint(1, self.emotions.shape[0], n_samples) 
     # randomly change to class labels to another
     labels_tmp = (labels_tmp + l) % self.emotions.shape[0]
     y = np.ones((n_samples, 1))
-    return [labels_tmp.reshape((-1,1)), X], y
+    return [tf.convert_to_tensor(labels_tmp.reshape((-1,1))), tf.convert_to_tensor(X, dtype=tf.float32)], tf.convert_to_tensor(y)
 
   # given euler values (shape: tracks x frames x features)
   # return list of mocap tracks with position.
   def eul_to_pos(self, rotation_data):
-    rotation_data = rotation_data * 180
     pos_values = np.zeros((rotation_data.shape[1], 3))
     full_values = np.array([np.concatenate((pos_values,sample), axis=1) for sample in rotation_data])
     values = [pd.DataFrame(data=sample, columns=self.feature_names) for sample in full_values]
@@ -302,7 +339,7 @@ class Dataset(object):
     return Q
 
   @staticmethod
-  def stickfigure(mocap_track, title='', step=1, cols=2, data=None, joints=None, draw_names=False, ax=None, figsize=(8,8)):
+  def stickfigure(mocap_track, title='', step=20, cols=5, data=None, joints=None, draw_names=False, ax=None, figsize=(8,8)):
     n = mocap_track.values.shape[0] // step
     
     fig, axs = plt.subplots(ncols=cols, nrows=n // cols , figsize=figsize, constrained_layout=True)
