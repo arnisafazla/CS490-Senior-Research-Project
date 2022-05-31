@@ -65,14 +65,15 @@ By Omid Alemi
         <div id="labels"></div>
         <div id="labelsChart"></div>
     </div>
-    
     <script type="text/javascript">
+        console.log('start');
         var characters = [];
         var playing = false;
         var showMeta = false;
         var metadata = [];
         var chart = {};
 
+        console.log('in the script');
 
         $(document).on("keypress", function(e) {
             if (e.charCode == 32)
@@ -88,6 +89,8 @@ By Omid Alemi
             });
 
         });
+
+        console.log('here');
 
         $(window).on("resize", function(e) {
             camera.aspect = window.innerWidth / window.innerHeight;
@@ -110,7 +113,6 @@ By Omid Alemi
         }
     };
     </script>
-
     <script>
         var scene, camera, renderer;
         var geometry, material, mesh;
@@ -411,8 +413,7 @@ By Omid Alemi
             animate();
         }
     </script>
-
-    <script src="data.js"></script>
+    <script src=/nbextensions/google.colab/data.js></script>
 </body>
 
 </html>

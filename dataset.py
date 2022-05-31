@@ -13,10 +13,12 @@ import tensorflow as tf
 
 main_dir = os.getcwd()
 sys.path.append(os.path.join(main_dir, 'PyMO'))
+sys.path.append(main_dir)
 from pymo import parsers
 from pymo import viz_tools
 from pymo import preprocessing
 from pymo import data as mocapdata
+from tools import Tools
 
 class Dataset(object):
   def __init__(
@@ -185,18 +187,6 @@ class Dataset(object):
   def get_size(self):
       return self.X.shape[0]
 
-  @staticmethod
-  def smoothen(rotation_data):  # not good results
-    sin = np.sin(np.deg2rad(rotation_data))
-    cos = np.cos(np.deg2rad(rotation_data))
-    return np.concatenate((sin, cos), axis=2)
-
-  @staticmethod
-  def atan(rotation_data):  # revert smoothen
-    sin = rotation_data[:,:,:int(rotation_data.shape[2]/2)]
-    cos = rotation_data[:,:,int(rotation_data.shape[2]/2):]
-    return np.arctan2(sin, cos) * 180 / np.pi
-
   # For the simple LSTM model called Classifier
   def train_test_split(self, test_size = 0.33, ord = False, smoothen=False):
     size = self.X.shape[0]
@@ -213,43 +203,36 @@ class Dataset(object):
     split = size - int(size * test_size)
     return X_shuffled[0:split], Y_shuffled[0:split], X_shuffled[split:], Y_shuffled[split:]
 
-  def generate_real_samples(self, n_samples, smoothen=False, val=False):
+  def generate_real_samples(self, n_samples, val=False):
     if val:
       seq, labels = self.X_val, self.Y_ord_val
     else:
       seq, labels = self.X, self.Y_ord
     r = np.random.randint(0, seq.shape[0], n_samples)
     labels = labels[r]
-    if smoothen:
-      X = self.smoothen(seq[r])
-    else:
-      X = seq[r]/180
+    X = seq[r]/180
     y = -np.ones((n_samples, 1))
     return [tf.convert_to_tensor(labels), tf.convert_to_tensor(X, dtype=tf.dtypes.float32)], tf.convert_to_tensor(y)
 
   # not necessary anymore?
-  def generate_fake_samples(self, n_samples, smoothen=False, val=False):
+  def generate_fake_samples(self, n_samples, val=False):
     if val:
       seq, labels = self.X_val, self.Y_ord_val
     else:
       seq, labels = self.X, self.Y_ord
     r = np.random.randint(0, seq.shape[0], n_samples)
     labels_tmp = labels[r].reshape((-1,))
-    if smoothen:
-      X = self.smoothen(seq[r])
-    else:
-      X = seq[r]/180
+    X = seq[r]/180
     l = np.random.randint(1, self.emotions.shape[0], n_samples) 
     # randomly change to class labels to another
     labels_tmp = (labels_tmp + l) % self.emotions.shape[0]
     y = np.ones((n_samples, 1))
     return [labels_tmp.reshape((-1,1)), X], y
 
-  def transform(self, rotation_data, smoothen=True):
-    if smoothen:
-      rotation_data = self.atan(rotation_data)
-    else:
-      rotation_data = rotation_data * 180
+  # given euler values (shape: tracks x frames x features)
+  # return list of mocap tracks with position.
+  def eul_to_pos(self, rotation_data):
+    rotation_data = rotation_data * 180
     pos_values = np.zeros((rotation_data.shape[1], 3))
     full_values = np.array([np.concatenate((pos_values,sample), axis=1) for sample in rotation_data])
     values = [pd.DataFrame(data=sample, columns=self.feature_names) for sample in full_values]
@@ -259,6 +242,64 @@ class Dataset(object):
     parametrizer = preprocessing.MocapParameterizer(param_type='position')
     position_transformed = parametrizer.transform(mocap)
     return position_transformed
+
+  # given rotation matrices (shape: tracks x frames x joints x 3 x 3)
+  # return list of mocap tracks with position.
+  def rots_to_pos(self, rots):
+    rots_tracks = Tools.rots_to_dict(rots, self)
+    X = rots_tracks.copy()
+    data = self.data
+    '''Converts joints rotations in Euler angles to joint positions'''
+    Q = []
+    # track:  frames x no_of_joints x (3 x 3)
+    for track in X:
+      tmp = track.copy()
+      channels = []
+      titles = []
+      # Create a new DataFrame to store the exponential map rep
+      pos_df = pd.DataFrame(index=data.values.index[:self.frames])
+      tree_data = {}
+
+      for (joint_id, joint) in enumerate(data.traverse()):
+        parent = data.skeleton[joint]['parent']
+        tree_data[joint]=[
+                              [], # to store the rotation matrix
+                              []  # to store the calculated position
+                            ] 
+
+        pos_values = [[0,0,0] for f in range(self.frames)]
+        if joint not in tmp.keys():
+          tmp[joint] = np.array([[[1., 0., 0.],
+                                      [0., 1., 0.],
+                                      [0., 0., 1.]] for i in range(self.frames)])
+        if joint == data.root_name:
+          tree_data[joint][0] = tmp[joint]
+          tree_data[joint][1] = pos_values
+        else:
+          # for every frame i, multiply this joint's rotmat to the rotmat of its parent
+          tree_data[joint][0] = np.asarray([np.matmul(tmp[joint][i], tree_data[parent][0][i]) 
+                                            for i in range(len(tree_data[parent][0]))])
+
+          # add the position channel to the offset and store it in k, for every frame i
+          k = np.asarray([data.skeleton[joint]['offsets'] for i in range(len(tree_data[parent][0]))])
+
+          # multiply k to the rotmat of the parent for every frame i
+          q = np.asarray([np.matmul(k[i], tree_data[parent][0][i]) 
+                          for i in range(len(tree_data[parent][0]))])
+
+          # add q to the position of the parent, for every frame i
+          tree_data[joint][1] = np.asarray([np.add(q[i], tree_data[parent][1][i])
+                                            for i in range(len(tree_data[parent][1]))])
+          
+        # Create the corresponding columns in the new DataFrame
+        pos_df['%s_Xposition'%joint] = pd.Series(data=[e[0] for e in tree_data[joint][1]], index=pos_df.index)
+        pos_df['%s_Yposition'%joint] = pd.Series(data=[e[1] for e in tree_data[joint][1]], index=pos_df.index)
+        pos_df['%s_Zposition'%joint] = pd.Series(data=[e[2] for e in tree_data[joint][1]], index=pos_df.index)
+
+    new_track = data.clone()
+    new_track.values = pos_df
+    Q.append(new_track)
+    return Q
 
   @staticmethod
   def stickfigure(mocap_track, title='', step=1, cols=2, data=None, joints=None, draw_names=False, ax=None, figsize=(8,8)):
