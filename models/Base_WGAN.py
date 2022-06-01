@@ -176,9 +176,9 @@ class Base_WGAN(keras.Model):
                           # g_loss batch is validation loss of critic if we run it in validation mode
                         else:
                           val_loss = 0
-                        self.train_metrics[0].append(int(c_loss_batch / self.config['n_critic']))
-                        self.train_metrics[1].append(int(g_loss_batch))
-                        self.train_metrics[2].append(int(val_loss))
+                        self.train_metrics[0].append(float(c_loss_batch / self.config['n_critic']))
+                        self.train_metrics[1].append(float(g_loss_batch))
+                        self.train_metrics[2].append(float(val_loss))
                         # c_loss_epoch.append(c_loss_batch / self.config['n_critic'])
                         # g_loss_epoch.append(g_loss_batch)
                         if verbose == 1 or verbose == 2:
@@ -240,7 +240,7 @@ class Base_WGAN(keras.Model):
       # visualize and plot poses
       position_transformed = []
       for i in range(outputs.shape[0]):
-        position_transformed.append(self.dataset.transform(np.array([outputs[i]]))[0])
+        position_transformed.append(self.dataset.rots_to_pos(np.array([outputs[i].reshape((self.dataset.frames, -1, 6))]), rep='6d')[0])
       for i, mocap_track in enumerate(position_transformed):
         fig = self.dataset.stickfigure(mocap_track, step=20, cols=5, title=self.dataset.ordinalencoder.inverse_transform([[labels[i]]]), figsize=(8,8))
         fig.savefig(os.path.join(epoch_dir, str(i) + '.png'))

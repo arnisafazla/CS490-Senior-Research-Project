@@ -218,7 +218,7 @@ class Dataset(object):
         pass
     elif self.representation == 'eul':
       if rep == '6d':
-        X = Tools.rots_to_ort6d(Tools.euler_to_rots(X))
+        X = Tools.rots_to_ort6d(Tools.euler_to_rots(X)).numpy()
       elif rep == 'rot':
         X = Tools.euler_to_rots(X)
       elif rep == 'eul':
@@ -246,12 +246,11 @@ class Dataset(object):
       seq, labels = self.X, self.Y_ord
     r = np.random.randint(0, seq.shape[0], n_samples)
     labels = labels[r]
-    X = tf.gather(seq, indices = r)
+    X = seq[r]
     X = self.convert_representation(X, rep)
     y = -np.ones((n_samples, 1))
     return [tf.convert_to_tensor(labels), tf.convert_to_tensor(X, dtype=tf.float32)], tf.convert_to_tensor(y)
 
-  # not necessary anymore?
   def generate_fake_samples(self, n_samples, val=False, rep='6d'):
     if val:
       seq, labels = self.X_val, self.Y_ord_val
@@ -259,7 +258,7 @@ class Dataset(object):
       seq, labels = self.X, self.Y_ord
     r = np.random.randint(0, seq.shape[0], n_samples)
     labels_tmp = labels[r].reshape((-1,))
-    X = tf.gather(seq, indices = r)
+    X = seq[r]
     X = self.convert_representation(X, rep)
     l = np.random.randint(1, self.emotions.shape[0], n_samples) 
     # randomly change to class labels to another
@@ -282,7 +281,10 @@ class Dataset(object):
 
   # given rotation matrices (shape: tracks x frames x joints x 3 x 3)
   # return list of mocap tracks with position.
-  def rots_to_pos(self, rots):
+  def rots_to_pos(self, rots, rep='6d'):
+    assert rep in ['6d', 'rots']
+    if rep == '6d':
+      rots = Tools.ort6d_to_rots(rots)
     rots_tracks = Tools.rots_to_dict(rots, self)
     X = rots_tracks.copy()
     data = self.data
@@ -333,9 +335,9 @@ class Dataset(object):
         pos_df['%s_Yposition'%joint] = pd.Series(data=[e[1] for e in tree_data[joint][1]], index=pos_df.index)
         pos_df['%s_Zposition'%joint] = pd.Series(data=[e[2] for e in tree_data[joint][1]], index=pos_df.index)
 
-    new_track = data.clone()
-    new_track.values = pos_df
-    Q.append(new_track)
+      new_track = data.clone()
+      new_track.values = pos_df
+      Q.append(new_track)
     return Q
 
   @staticmethod

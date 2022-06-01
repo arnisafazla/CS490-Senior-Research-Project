@@ -11,6 +11,8 @@ sys.path.append(os.path.join(main_dir, 'PyMO'))
 class Tools(object):
   @staticmethod
   def _from_euler(y):
+    # change to YXZ from XYZ first
+
     ca = np.cos(y[:,0] * np.pi / 180)
     cb = np.cos(y[:,1] * np.pi / 180)
     cg = np.cos(y[:,2] * np.pi / 180)
@@ -24,10 +26,13 @@ class Tools(object):
   @staticmethod
   # convert euler values (shape: tracks x frames x features) of YXZ order
   # to rotation matrices (shape: tracks x frames x joints x 3 x 3)
-  def euler_to_rots(euler):
-      shape = (euler.shape[0], euler.shape[1], int(euler.shape[2]/3), 3, 3)
-      eul2 = euler.reshape(-1, 3)
-      rots = Tools._from_euler(eul2).reshape(shape)
+  def euler_to_rots(eul):
+      shape = (eul.shape[0], eul.shape[1], int(eul.shape[2]/3), 3, 3)
+      eul2 = eul.reshape(-1, 3)
+      eul3 = eul2.copy()
+      eul3[:,0] = eul2[:,1]
+      eul3[:,1] = eul2[:,0]
+      rots = Tools._from_euler(eul3).reshape((shape))
       return rots
 
   @staticmethod
@@ -117,13 +122,18 @@ class Tools(object):
   # given rotation matrices (shape: tracks x frames x joints x 3 x 3)
   # return tf tensor ort6d representation (shape: tracks x frames x joints x 6)
   def rots_to_ort6d(rots):
-    return tf.reshape(Tools.tf_matrix_to_rotation6d(tf.convert_to_tensor(rots)), [rots.shape[0],rots.shape[1],rots.shape[2],6])
+    if tf.is_tensor(rots) == False:
+      rots = tf.convert_to_tensor(rots)
+    return tf.reshape(Tools.tf_matrix_to_rotation6d(rots), [rots.shape[0],rots.shape[1],rots.shape[2],6])
 
   @staticmethod
   # given tf tensor ort6d representation (shape: tracks x frames x joints x 6)
   # return np array rotation matrices (shape: tracks x frames x joints x 3 x 3)
-  def ort6d_to_rots(ort6d, tracks, frames, joints):
-    return np.array(tf.reshape(Tools.tf_rotation6d_to_matrix(ort6d), [tracks,frames,joints,3,3]))
+  def ort6d_to_rots(ort6d):
+    if tf.is_tensor(ort6d) == False:
+      ort6d = tf.convert_to_tensor(ort6d)
+    shape = [ort6d.shape[0], ort6d.shape[1], ort6d.shape[2], 3, 3]
+    return np.array(tf.reshape(Tools.tf_rotation6d_to_matrix(ort6d), shape))
 
   @staticmethod
   def generate_latent_points(latent_dim, n_samples, n_classes):
@@ -157,15 +167,15 @@ class Tools(object):
 
 class Metrics(object):
   @staticmethod
-  def confusion_matrix(critic, n_classes, n_samples, dataset, smoothen=True, val=False):
+  def confusion_matrix(critic, n_classes, n_samples, dataset, val=False):
     cm = np.zeros((n_classes,n_classes))
     device_name = tf.test.gpu_device_name()
     if device_name == '/device:GPU:0':
       for label in range(n_classes):
         for i in range(n_samples):
-          [labels_real, X_real], y_real = dataset.generate_real_samples(1, smoothen, val=val)
+          [labels_real, X_real], y_real = dataset.generate_real_samples(1, val=val)
           while int(labels_real.numpy().item()) != label:
-            [labels_real, X_real], y_real = dataset.generate_real_samples(1, smoothen, val=val)
+            [labels_real, X_real], y_real = dataset.generate_real_samples(1, val=val)
           with tf.device('/device:GPU:0'):
             probs = critic.predict([np.arange(n_classes), np.repeat(X_real, n_classes, axis=0)])
             cm[int(labels_real.numpy().item()), np.argmax(probs)] += 1
