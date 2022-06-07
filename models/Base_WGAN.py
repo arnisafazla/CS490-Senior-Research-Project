@@ -203,8 +203,8 @@ class Base_WGAN(keras.Model):
                         json.dump(cm, file)
 
         else:
-          with tf.device('/cpu:0'):
-            self.logger.error('Not connected to GPU')
+          self.logger.error('Not connected to GPU')
+          print('No GPU')
     # create a line plot of loss for the gan and save to file
     @staticmethod
     def plot_history(train_metrics):
