@@ -37,6 +37,12 @@ def define_projection_critic(config):
       repeat = layers.RepeatVector(config['in_shape'][0], name='repeat')(in_label)
       merged1 = layers.Concatenate(axis=2, name='merge1')([hidden1, repeat])
       hidden1 = layers.TimeDistributed(ConditionalLayerNorm(n_classes=config['n_classes'], name='conditional_layer_norm1'))(merged1)
+    if config['critic_cond_layer_norm_plus']:
+      in_label_category = layers.CategoryEncoding(num_tokens=config['n_classes'], output_mode="one_hot", name='one-hot')(in_label)
+      repeat = layers.RepeatVector(config['in_shape'][0], name='repeat')(in_label_category)
+      merged1 = layers.Concatenate(axis=2, name='merge1')([hidden1, repeat])
+      hidden1 = layers.TimeDistributed(ConditionalLayerNormPlus(n_classes=config['n_classes'], name='conditional_layer_norm1'))(merged1)
+
 
     hidden2 = layers.LSTM(hidden1.shape[2], name='lstm2', kernel_initializer=init, unroll=True)(hidden1)   
     if config['critic_batch_norm']:
@@ -49,10 +55,7 @@ def define_projection_critic(config):
       hidden2 = layers.WeightNormalization(axis=1 , center=True , scale=True)(hidden2)
     if config['critic_dropout'] > 0:
       hidden2 = layers.Dropout(config['critic_dropout'])(hidden2)
-    if config['critic_cond_layer_norm'] > 0:
-      merged2 = layers.Concatenate(axis=2, name='merge2')([hidden2, repeat])
-      hidden2 = layers.TimeDistributed(ConditionalLayerNorm(n_classes=config['n_classes'], name='conditional_layer_norm2'))(merged2)
-
+  
     dot = layers.Dot(axes=(1))([hidden2, li])
 
     # process sequence data more separately

@@ -60,12 +60,14 @@ class Base_WGAN(keras.Model):
           with open(os.path.join(model_load, 'train_metrics.txt')) as file:
             self.train_metrics = json.load(file)
           self.start_epoch = int(re.match('.*?([0-9]+)$', model_load).group(1))
-    def compile(self, c_optimizer, g_optimizer, c_loss_fn, g_loss_fn):
+    def compile(self, c_optimizer, g_optimizer, c_loss_fn, g_loss_fn, c_scheduler=None, g_scheduler=None):
         super(Base_WGAN, self).compile()
         self.c_optimizer = c_optimizer
         self.g_optimizer = g_optimizer
         self.c_loss_fn = c_loss_fn
         self.g_loss_fn = g_loss_fn
+        self.c_scheduler = c_scheduler
+        self.g_scheduler = g_scheduler
 
     def gradient_penalty(self, batch_size, real_seq, real_labels, fake_seq):
         """ Calculates the gradient penalty.
@@ -113,6 +115,10 @@ class Base_WGAN(keras.Model):
                 dataset_size = self.dataset.get_size()
                 bat_per_epo = int(dataset_size / self.config['batch_size'])
                 for epoch in range(self.start_epoch, self.config['epochs']):
+                    if self.c_scheduler != None:
+                      K.set_value(self.c_optimizer.learning_rate, self.c_scheduler(epoch, self.c_optimizer._decayed_lr(tf.float32)))
+                    if self.g_scheduler != None:
+                      K.set_value(self.g_optimizer.learning_rate, self.g_scheduler(epoch, self.g_optimizer._decayed_lr(tf.float32)))
                     # c_loss_epoch, g_loss_epoch = list(), list()
                     for batch in range(bat_per_epo):
                         [labels_real, X_real], y_real = self.dataset.generate_real_samples(self.config['batch_size'], rep=self.config['representation'])
@@ -184,10 +190,16 @@ class Base_WGAN(keras.Model):
                         self.train_metrics[0].append(float(c_loss_batch / self.config['n_critic']))
                         self.train_metrics[1].append(float(g_loss_batch) / self.config['n_generator'])
                         self.train_metrics[2].append(float(val_loss))
+
                         # c_loss_epoch.append(c_loss_batch / self.config['n_critic'])
                         # g_loss_epoch.append(g_loss_batch)
                         if verbose == 1 or verbose == 2:
-                            print('>%d, %d/%d, c_loss=%.3f, g_loss=%.3f, val_loss=%.3f' %(epoch+1, batch+1, bat_per_epo, c_loss_batch / self.config['n_critic'], g_loss_batch / self.config['n_generator'], val_loss))
+                            print('>%d, %d/%d, c_loss=%.3f, g_loss=%.3f, val_loss=%.3f, c_lr=%.5f, g_lr=%.5f' \
+                                  %(epoch+1, batch+1, bat_per_epo, c_loss_batch / self.config['n_critic'], \
+                                    g_loss_batch / self.config['n_generator'], val_loss, \
+                                    float(self.c_optimizer._decayed_lr(tf.float32)), \
+                                    float(self.g_optimizer._decayed_lr(tf.float32))))
+
                     # logs = [mean(c_loss_epoch), mean(g_loss_epoch)]
                     # names = ["c_loss", "g_loss"]
                     # tensorboard.on_epoch_end(epoch+1, Tools.named_logs(names, logs))
