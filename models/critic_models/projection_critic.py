@@ -34,7 +34,9 @@ def define_projection_critic(config):
     if config['critic_dropout'] > 0:
       hidden1 = layers.Dropout(config['critic_dropout'])(hidden1)
     if config['critic_cond_layer_norm']:
-      hidden1 = layers.TimeDistributed(ConditionalLayerNorm(n_classes=config['n_classes'], name='conditional_layer_norm'))(hidden1)
+      repeat = layers.RepeatVector(config['in_shape'][0], name='repeat')(in_label)
+      merged1 = layers.Concatenate(axis=2, name='merge1')([hidden1, repeat])
+      hidden1 = layers.TimeDistributed(ConditionalLayerNorm(n_classes=config['n_classes'], name='conditional_layer_norm1'))(merged1)
 
     hidden2 = layers.LSTM(hidden1.shape[2], name='lstm2', kernel_initializer=init, unroll=True)(hidden1)   
     if config['critic_batch_norm']:
@@ -48,7 +50,8 @@ def define_projection_critic(config):
     if config['critic_dropout'] > 0:
       hidden2 = layers.Dropout(config['critic_dropout'])(hidden2)
     if config['critic_cond_layer_norm'] > 0:
-      hidden2 = layers.TimeDistributed(ConditionalLayerNorm(n_classes=config['n_classes'], name='conditional_layer_norm'))(hidden2)
+      merged2 = layers.Concatenate(axis=2, name='merge2')([hidden2, repeat])
+      hidden2 = layers.TimeDistributed(ConditionalLayerNorm(n_classes=config['n_classes'], name='conditional_layer_norm2'))(merged2)
 
     dot = layers.Dot(axes=(1))([hidden2, li])
 
