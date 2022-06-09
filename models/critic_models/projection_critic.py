@@ -25,29 +25,29 @@ def define_projection_critic(config):
     hidden1 = layers.LSTM(config['in_shape'][1], name='lstm1', return_sequences=True, kernel_initializer=init, unroll=True)(in_seq)
     if config['critic_batch_norm']:
       hidden1 = layers.BatchNormalization()(hidden1)
-    elif config['critic_instance_norm']:
+    if config['critic_instance_norm']:
       hidden1 = tfa.layers.InstanceNormalization()(hidden1)
-    elif config['critic_layer_norm']:
+    if config['critic_layer_norm']:
       hidden1 = layers.LayerNormalization(axis=1 , center=True , scale=True)(hidden1)
-    elif config['critic_weight_norm']:
+    if config['critic_weight_norm']:
       hidden1 = layers.WeightNormalization(axis=1 , center=True , scale=True)(hidden1)
-    elif config['critic_dropout'] > 0:
+    if config['critic_dropout'] > 0:
       hidden1 = layers.Dropout(config['critic_dropout'])(hidden1)
-    elif config['critic_cond_layer_norm'] > 0:
+    if config['critic_cond_layer_norm']:
       hidden1 = layers.TimeDistributed(ConditionalLayerNorm(n_classes=config['n_classes'], name='conditional_layer_norm'))(hidden1)
 
     hidden2 = layers.LSTM(hidden1.shape[2], name='lstm2', kernel_initializer=init, unroll=True)(hidden1)   
     if config['critic_batch_norm']:
       hidden2 = layers.BatchNormalization()(hidden2)
-    elif config['critic_instance_norm']:
+    if config['critic_instance_norm']:
       hidden2 = tfa.layers.InstanceNormalization()(hidden2)
-    elif config['critic_layer_norm']:
+    if config['critic_layer_norm']:
       hidden2 = layers.LayerNormalization(axis=1 , center=True , scale=True)(hidden2)
-    elif config['critic_weight_norm']:
+    if config['critic_weight_norm']:
       hidden2 = layers.WeightNormalization(axis=1 , center=True , scale=True)(hidden2)
-    elif config['critic_dropout'] > 0:
+    if config['critic_dropout'] > 0:
       hidden2 = layers.Dropout(config['critic_dropout'])(hidden2)
-    elif config['critic_cond_layer_norm'] > 0:
+    if config['critic_cond_layer_norm'] > 0:
       hidden2 = layers.TimeDistributed(ConditionalLayerNorm(n_classes=config['n_classes'], name='conditional_layer_norm'))(hidden2)
 
     dot = layers.Dot(axes=(1))([hidden2, li])

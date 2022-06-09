@@ -17,23 +17,31 @@ def define_norm_generator(config):
   lat = layers.Reshape((config['in_shape'][0], config['in_shape'][1]))(lat)
   # merge = keras.layers.Concatenate(name='concatenate', axis=2)([li, lat])
 
-  hidden1 = layers.LSTM(config['in_shape'][1]*2, name='LSTM1', return_sequences=True, kernel_initializer=init)(lat)
+  hidden1 = layers.LSTM(config['in_shape'][1], name='LSTM1', return_sequences=True, kernel_initializer=init)(lat)
   merged = layers.Concatenate(axis=2, name='concatenate')([hidden1, li])
   if config['generator_batch_norm']:
     merged = layers.TimeDistributed(ConditionalBatchNorm(n_classes=config['n_classes'], name='conditional_batch_norm'))(merged)
-  elif config['generator_layer_norm']:
+  if config['generator_layer_norm']:
     merged = layers.TimeDistributed(ConditionalLayerNorm(n_classes=config['n_classes'], name='conditional_layer_norm'))(merged)
-  elif config['generator_layer_norm_plus']:
+  if config['generator_layer_norm_plus']:
     merged = layers.TimeDistributed(ConditionalLayerNormPlus(n_classes=config['n_classes'], name='conditional_layer_norm_plus'))(merged)
-  hidden2 = layers.LSTM(config['in_shape'][1], name='out_LSTM', return_sequences=True, kernel_initializer=init)(merged)
+  hidden2 = layers.LSTM(config['in_shape'][1]*2, name='LSTM2', return_sequences=True, kernel_initializer=init)(merged)
   merged2 = layers.Concatenate(axis=2, name='concatenate2')([hidden2, li])
   if config['generator_batch_norm']:
     merged2 = layers.TimeDistributed(ConditionalBatchNorm(n_classes=config['n_classes'], name='conditional_batch_norm2'))(merged2)
-  elif config['generator_layer_norm']:
+  if config['generator_layer_norm']:
     merged2 = layers.TimeDistributed(ConditionalLayerNorm(n_classes=config['n_classes'], name='conditional_layer_norm2'))(merged2)
-  elif config['generator_layer_norm_plus']:
+  if config['generator_layer_norm_plus']:
     merged2 = layers.TimeDistributed(ConditionalLayerNormPlus(n_classes=config['n_classes'], name='conditional_layer_norm_plus2'))(merged2)
-  model = keras.Model([in_label, in_lat], merged2, name='generator')
+  hidden3 = layers.LSTM(config['in_shape'][1], name='out_LSTM', return_sequences=True, kernel_initializer=init)(merged2)
+  merged3 = layers.Concatenate(axis=2, name='concatenate3')([hidden3, li])
+  if config['generator_batch_norm']:
+    merged3 = layers.TimeDistributed(ConditionalBatchNorm(n_classes=config['n_classes'], name='conditional_batch_norm3'))(merged3)
+  if config['generator_layer_norm']:
+    merged3 = layers.TimeDistributed(ConditionalLayerNorm(n_classes=config['n_classes'], name='conditional_layer_norm3'))(merged3)
+  if config['generator_layer_norm_plus']:
+    merged3 = layers.TimeDistributed(ConditionalLayerNormPlus(n_classes=config['n_classes'], name='conditional_layer_norm_plus3'))(merged3)
+  model = keras.Model([in_label, in_lat], merged3, name='generator')
   return model
 
 class ConditionalBatchNorm(layers.Layer):
@@ -131,7 +139,7 @@ class ConditionalLayerNorm(layers.Layer):
         initializer='zeros', trainable=True, name='gamma')
     self.beta = self.add_weight(shape=[self.n_classes, self.seq_len], 
         initializer='zeros', trainable=True, name='beta')
-    self.eps = 0.00001  # only for prevent dividing by 0. keras.layers.BatchNormalization use 0.001, I use smaller for safer
+    self.eps = 0.0000001  # only for prevent dividing by 0. keras.layers.BatchNormalization use 0.001, I use smaller for safer
   def call(self, inputs, training=False):
     x, labels = tf.split(inputs, [self.seq_len, 1], axis=1)
     labels = tf.cast(labels, tf.int32)

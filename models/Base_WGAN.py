@@ -115,56 +115,61 @@ class Base_WGAN(keras.Model):
                 for epoch in range(self.start_epoch, self.config['epochs']):
                     # c_loss_epoch, g_loss_epoch = list(), list()
                     for batch in range(bat_per_epo):
-                        c_loss_batch = 0
                         [labels_real, X_real], y_real = self.dataset.generate_real_samples(self.config['batch_size'], rep=self.config['representation'])
-                        for _ in range(self.config['n_critic']):
-                            # Get the latent vector
-                            labels_input, z_input = Tools.generate_latent_points(self.config['latent_dim'], self.config['batch_size'], self.config['n_classes'])
-                            with tf.GradientTape() as tape:
-                                # Generate fake images from the latent vector
-                                if self.config['only_critic'] == False:
-                                  fake_samples = self.generator([labels_input, z_input], training=True)
-                                else:
-                                  [labels_input, fake_samples], y_fake = self.dataset.generate_fake_samples(self.config['batch_size'], rep=self.config['representation'])
+                        dec = np.diff(self.train_metrics[1][-self.config['critic_train_after']-1:])
+                        if self.config['critic_train_after'] <= 0 or (len(self.train_metrics[1]) > 0 and np.all(dec < 0)) or len(self.train_metrics[1]) == 0:
+                          c_loss_batch = 0
+                          for _ in range(self.config['n_critic']):
+                              # Get the latent vector
+                              labels_input, z_input = Tools.generate_latent_points(self.config['latent_dim'], self.config['batch_size'], self.config['n_classes'])
+                              with tf.GradientTape() as tape:
+                                  # Generate fake images from the latent vector
+                                  if self.config['only_critic'] == False:
+                                    fake_samples = self.generator([labels_input, z_input], training=True)
+                                  else:
+                                    [labels_input, fake_samples], y_fake = self.dataset.generate_fake_samples(self.config['batch_size'], rep=self.config['representation'])
 
-                                # Get the logits for the fake samples
-                                fake_logits = self.critic([labels_input, fake_samples], training=True)
-                                # Get the logits for the real images
-                                real_logits = self.critic([labels_real, X_real], training=True)
+                                  # Get the logits for the fake samples
+                                  fake_logits = self.critic([labels_input, fake_samples], training=True)
+                                  # Get the logits for the real images
+                                  real_logits = self.critic([labels_real, X_real], training=True)
 
-                                # Calculate the discriminator loss using the fake and real image logits
-                                c_cost = self.c_loss_fn(real=real_logits, fake=fake_logits)
-                                # Calculate the gradient penalty
-                                gp = self.gradient_penalty(self.config['batch_size'], real_seq=X_real, real_labels=labels_real, fake_seq=fake_samples)
-                                # Add the gradient penalty to the original discriminator loss
-                                c_loss = c_cost + gp * self.config['gp_weight']
-                                c_loss_batch += c_loss
+                                  # Calculate the discriminator loss using the fake and real image logits
+                                  c_cost = self.c_loss_fn(real=real_logits, fake=fake_logits)
+                                  # Calculate the gradient penalty
+                                  gp = self.gradient_penalty(self.config['batch_size'], real_seq=X_real, real_labels=labels_real, fake_seq=fake_samples)
+                                  # Add the gradient penalty to the original discriminator loss
+                                  c_loss = c_cost + gp * self.config['gp_weight']
+                                  c_loss_batch += c_loss
 
-                            # Get the gradients w.r.t the critic loss
-                            c_gradient = tape.gradient(c_loss, self.critic.trainable_variables)
-                            # Update the weights of the discriminator using the discriminator optimizer
-                            self.c_optimizer.apply_gradients(
-                                zip(c_gradient, self.critic.trainable_variables)
-                            )
-
+                              # Get the gradients w.r.t the critic loss
+                              c_gradient = tape.gradient(c_loss, self.critic.trainable_variables)
+                              # Update the weights of the discriminator using the discriminator optimizer
+                              self.c_optimizer.apply_gradients(
+                                  zip(c_gradient, self.critic.trainable_variables)
+                              )
+                          
                         # Train the generator
                         # Get the latent vector
                         if self.config['only_critic'] == False:
-                          labels_input, z_input = Tools.generate_latent_points(self.config['latent_dim'], self.config['batch_size'], self.config['n_classes'])
-                          with tf.GradientTape() as tape:
-                              # Generate fake images using the generator
-                              fake_samples = self.generator([labels_input, z_input], training=True)
-                              # Get the discriminator logits for fake images
-                              fake_logits = self.critic([labels_input, fake_samples], training=True)
-                              # Calculate the generator loss
-                              g_loss_batch = self.g_loss_fn(fake_logits)
+                          g_loss_batch = 0
+                          for _ in range(self.config['n_generator']):
+                            labels_input, z_input = Tools.generate_latent_points(self.config['latent_dim'], self.config['batch_size'], self.config['n_classes'])
+                            with tf.GradientTape() as tape:
+                                # Generate fake images using the generator
+                                fake_samples = self.generator([labels_input, z_input], training=True)
+                                # Get the discriminator logits for fake images
+                                fake_logits = self.critic([labels_input, fake_samples], training=True)
+                                # Calculate the generator loss
+                                g_loss = self.g_loss_fn(fake_logits)
+                                g_loss_batch += g_loss
 
-                          # Get the gradients w.r.t the generator loss
-                          gen_gradient = tape.gradient(g_loss_batch, self.generator.trainable_variables)
-                          # Update the weights of the generator using the generator optimizer
-                          self.g_optimizer.apply_gradients(
-                              zip(gen_gradient, self.generator.trainable_variables)
-                          )
+                            # Get the gradients w.r.t the generator loss
+                            gen_gradient = tape.gradient(g_loss, self.generator.trainable_variables)
+                            # Update the weights of the generator using the generator optimizer
+                            self.g_optimizer.apply_gradients(
+                                zip(gen_gradient, self.generator.trainable_variables)
+                            )
                         else:
                           g_loss_batch = 0
                         if self.config['validation']:
@@ -177,12 +182,12 @@ class Base_WGAN(keras.Model):
                         else:
                           val_loss = 0
                         self.train_metrics[0].append(float(c_loss_batch / self.config['n_critic']))
-                        self.train_metrics[1].append(float(g_loss_batch))
+                        self.train_metrics[1].append(float(g_loss_batch) / self.config['n_generator'])
                         self.train_metrics[2].append(float(val_loss))
                         # c_loss_epoch.append(c_loss_batch / self.config['n_critic'])
                         # g_loss_epoch.append(g_loss_batch)
                         if verbose == 1 or verbose == 2:
-                            print('>%d, %d/%d, c_loss=%.3f, g_loss=%.3f, val_loss=%.3f' %(epoch+1, batch+1, bat_per_epo, c_loss_batch / self.config['n_critic'], g_loss_batch, val_loss))
+                            print('>%d, %d/%d, c_loss=%.3f, g_loss=%.3f, val_loss=%.3f' %(epoch+1, batch+1, bat_per_epo, c_loss_batch / self.config['n_critic'], g_loss_batch / self.config['n_generator'], val_loss))
                     # logs = [mean(c_loss_epoch), mean(g_loss_epoch)]
                     # names = ["c_loss", "g_loss"]
                     # tensorboard.on_epoch_end(epoch+1, Tools.named_logs(names, logs))
@@ -198,7 +203,6 @@ class Base_WGAN(keras.Model):
                         self.save_checkpoint(epoch_dir, n_samples=1)
                       # apply on validation data
                       cm = Metrics.confusion_matrix(critic=self.critic, n_classes=self.config['n_classes'], n_samples=10, dataset=self.dataset, val=self.config['validation'])
-                      Tools.draw_confusion_matrix(cm, class_names)
                       with open(os.path.join(epoch_dir, 'cm.txt'), 'w') as file:
                         json.dump(cm, file)
 
